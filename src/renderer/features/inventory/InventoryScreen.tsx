@@ -50,7 +50,7 @@ export function InventoryScreen() {
   }
 
   return (
-    <div className="grid h-full grid-cols-[1fr_380px] gap-4 p-6">
+    <div className="grid h-full grid-cols-1 gap-4 p-6 lg:grid-cols-[1fr_360px]">
       <div className="flex flex-col">
         <div className="mb-4 flex items-center justify-between">
           <div>

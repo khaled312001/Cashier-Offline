@@ -14,13 +14,13 @@ function resolvePreload(): string {
 
 export function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1366,
-    height: 850,
-    minWidth: 1024,
-    minHeight: 680,
+    width: 1280,
+    height: 800,
+    minWidth: 900,
+    minHeight: 600,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f1f5f9',
     title: 'كاشير أوفلاين',
     webPreferences: {
       preload: resolvePreload(),

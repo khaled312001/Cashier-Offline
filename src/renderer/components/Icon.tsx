@@ -51,6 +51,8 @@ export type IconName =
   | 'download'
   | 'wallet'
   | 'shieldUser'
+  | 'barcode'
+  | 'scan'
 
 const PATHS: Record<IconName, ReactNode> = {
   cart: (
@@ -277,6 +279,13 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z" />
       <circle cx="12" cy="10" r="2.2" />
       <path d="M8.5 16a3.5 3.5 0 0 1 7 0" />
+    </>
+  ),
+  barcode: <path d="M3 5v14M6 5v14M9 5v10M9 17v2M12 5v14M15 5v9M15 16v3M18 5v14M21 5v14" />,
+  scan: (
+    <>
+      <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
+      <path d="M3 12h18" />
     </>
   )
 }

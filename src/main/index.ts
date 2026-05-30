@@ -52,6 +52,13 @@ async function bootstrap() {
     throw err
   }
 
+  // Headless smoke test mode: run E2E checks then exit.
+  if (process.argv.includes('--smoke')) {
+    const { runSmoke } = await import('./smoke')
+    await runSmoke()
+    return
+  }
+
   createMainWindow()
 
   app.on('activate', () => {

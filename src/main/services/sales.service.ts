@@ -55,10 +55,17 @@ class SalesService {
       const grandTotal = step > 0 ? roundTo(beforeRound, step) : beforeRound
       const rounding = grandTotal - beforeRound
 
-      const paidTotal = (input.payments ?? []).reduce((a, p) => a + p.amount, 0)
-      const usesCredit = (input.payments ?? []).some((p) => p.method === 'credit')
-      const changeDue = !hold && paidTotal > grandTotal ? paidTotal - grandTotal : 0
-      const dueAmount = !hold && paidTotal < grandTotal ? grandTotal - paidTotal : 0
+      // Credit ("آجل") is NOT real money received — it's owed by the customer.
+      // It must not count toward paidTotal, otherwise nothing is booked to the
+      // customer's receivable balance.
+      const allPayments = input.payments ?? []
+      const realPaid = allPayments.filter((p) => p.method !== 'credit').reduce((a, p) => a + p.amount, 0)
+      const creditPaid = allPayments.filter((p) => p.method === 'credit').reduce((a, p) => a + p.amount, 0)
+      const usesCredit = creditPaid > 0
+      const paidTotal = realPaid
+      const changeDue = !hold && realPaid > grandTotal ? realPaid - grandTotal : 0
+      // Anything not covered by real cash/card = due on the customer's account.
+      const dueAmount = !hold ? Math.max(0, grandTotal - realPaid) : 0
 
       if (!hold && dueAmount > 0 && !usesCredit && !input.customerId) {
         throw new AppError('UNPAID', 'المبلغ المدفوع أقل من الإجمالي')
@@ -209,9 +216,9 @@ class SalesService {
         refTable: 'sales', refId: saleId, userId
       }).run()
     }
-    // loyalty points
+    // loyalty points: earnRate = points awarded per 1 EGP spent
     if (settings.loyalty.enabled && settings.loyalty.earnRate > 0) {
-      const earned = Math.floor((grandTotal / 100) * settings.loyalty.earnRate / 100)
+      const earned = Math.floor((grandTotal / 100) * settings.loyalty.earnRate)
       if (earned > 0) {
         points += earned
         db.insert(s.customerTransactions).values({

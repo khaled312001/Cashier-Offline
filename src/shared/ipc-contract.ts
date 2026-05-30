@@ -220,7 +220,7 @@ export interface Api {
     printReceipt(saleId: number): Promise<void>
     openDrawer(): Promise<void>
     testPrinter(): Promise<void>
-    printLabel(input: { barcode: string; name?: string; price?: string }): Promise<{ saved: boolean; path?: string }>
+    printLabel(input: { productIds?: number[]; barcode?: string; copies?: number }): Promise<{ saved: boolean; path?: string }>
   }
   license: {
     status(): Promise<LicenseInfo>

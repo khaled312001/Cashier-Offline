@@ -29,7 +29,7 @@ export function ExpensesScreen() {
   }
 
   return (
-    <div className="grid h-full grid-cols-[1fr_360px] gap-4 p-6">
+    <div className="grid h-full grid-cols-1 gap-4 p-6 lg:grid-cols-[1fr_340px]">
       <div className="flex flex-col">
         <h1 className="mb-1 text-2xl font-extrabold text-ink-800">المصروفات</h1>
         <p className="mb-4 text-sm text-ink-400">مصروفات آخر 30 يومًا</p>

@@ -183,16 +183,16 @@ export function PosScreen() {
           ))}
         </div>
 
-        <div className="grid flex-1 auto-rows-min grid-cols-4 gap-3 overflow-auto pe-1">
+        <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2.5 overflow-auto pe-1 sm:grid-cols-3 xl:grid-cols-4">
           {gridProducts.map((p) => (
             <button
               key={p.id}
-              className="card flex h-28 flex-col justify-between p-3 text-start transition hover:border-brand-400 hover:shadow-soft"
+              className="card flex h-24 flex-col justify-between p-3 text-start transition hover:border-brand-400 hover:shadow-soft xl:h-28"
               onClick={() => addProduct(p)}
             >
               <span className="line-clamp-2 text-sm font-semibold text-ink-700">{p.name}</span>
               <div className="flex items-end justify-between">
-                <span className="text-lg font-extrabold text-brand-600">{formatMoney(p.sellPrice)}</span>
+                <span className="text-base font-extrabold text-brand-600 xl:text-lg">{formatMoney(p.sellPrice)}</span>
                 {p.isWeighed && <span className="chip bg-amber-100 text-amber-700">وزن</span>}
               </div>
             </button>

@@ -112,7 +112,7 @@ export function UsersScreen() {
           </table>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {roles.map((r) => (
             <div key={r.id} className="card p-5">
               <div className="mb-2 flex items-center justify-between">

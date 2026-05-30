@@ -45,7 +45,7 @@ export function SettingsScreen() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Section icon="store" title="بيانات النشاط">
           <Field label="اسم المحل">
             <input className="input" value={draft.profile.name} onChange={(e) => setDraft({ ...draft, profile: { ...draft.profile, name: e.target.value } })} />

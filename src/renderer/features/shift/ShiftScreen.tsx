@@ -42,7 +42,7 @@ export function ShiftScreen() {
       <h1 className="mb-1 text-2xl font-extrabold text-ink-800">{t('nav.shift')}</h1>
       <p className="mb-5 text-sm text-ink-400">إدارة الوردية والدرج والمصروفات</p>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="card p-5">
           <div className="mb-1 flex items-center gap-2 text-sm text-ink-400">
             <Icon name="user" className="h-4 w-4" /> الكاشير
