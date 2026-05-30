@@ -1,0 +1,7 @@
+{
+  "name": "license-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vendor-only tool to generate signed offline license files. NEVER ship this.",
+  "type": "module"
+}

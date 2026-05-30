@@ -1,0 +1,13 @@
+// Aggregate export of the entire data model. drizzle-kit reads this file.
+export * from './common'
+export * from './branches'
+export * from './products'
+export * from './inventory'
+export * from './sales'
+export * from './restaurant'
+export * from './customers'
+export * from './suppliers'
+export * from './users'
+export * from './shifts'
+export * from './settings'
+export * from './license'

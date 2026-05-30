@@ -1,0 +1,17 @@
+node_modules/
+out/
+dist/
+release/
+.dev-userdata/
+*.log
+
+# License signing keys MUST NEVER be committed
+tools/license-cli/keys/
+resources/keys/license_private.pem
+*.lic
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

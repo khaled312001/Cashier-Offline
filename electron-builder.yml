@@ -1,0 +1,43 @@
+appId: com.barmagly.cashieroffline
+productName: Cashier Offline
+copyright: Copyright © 2026 Barmagly (برمجلي)
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - resources/**/*
+  - package.json
+
+extraResources:
+  - from: resources
+    to: resources
+  - from: db/migrations
+    to: migrations
+  - from: db/fts.sql
+    to: resources/sql/fts.sql
+
+# better-sqlite3 is a native addon: keep it unpacked so the .node loads from disk
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+  - '**/*.node'
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+  # Skip signing/edit step → electron-builder won't fetch winCodeSign (which
+  # contains macOS symlinks Windows can't extract without Developer Mode).
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
