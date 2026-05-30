@@ -217,6 +217,122 @@ class ProductsService {
     const row = db.select({ q: s.stock.quantity }).from(s.stock).where(eq(s.stock.productId, productId)).get()
     return row?.q ?? 0
   }
+
+  /** Generate a unique internal EAN-13 barcode (prefix 200 = in-store use). */
+  genBarcode(): string {
+    const db = getDb()
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const body = '200' + Math.floor(Math.random() * 1_000_000_000).toString().padStart(9, '0')
+      const code = body + ean13CheckDigit(body)
+      const exists = db.select().from(s.productBarcodes).where(eq(s.productBarcodes.barcode, code)).get()
+      if (!exists) return code
+    }
+    return '2' + Date.now().toString().slice(-12)
+  }
+
+  /** The CSV import template (UTF-8 BOM so Excel shows Arabic) with examples. */
+  importTemplateCsv(): string {
+    const hint = '# الأعمدة بالترتيب: الاسم | الباركود | الفئة | الوحدة | التكلفة | سعر البيع | المخزون | بالوزن(نعم/لا) | الضريبة%'
+    const header = 'name,barcode,category,unit,costPrice,sellPrice,stock,isWeighed,taxRate'
+    const examples = [
+      'مياه معدنية 600 مل,6223000111119,مشروبات,قطعة,3.5,5,200,لا,0',
+      'أرز مصري,6223000444440,بقالة,كيلو,26,32,150,نعم,0',
+      'شيبسي كبير,6223000999992,سناكس,قطعة,4,6,300,لا,14'
+    ]
+    return '﻿' + [hint, header, ...examples].join('\r\n')
+  }
+
+  /**
+   * Bulk import/update products from parsed rows (Excel/CSV template).
+   * Match by barcode → update; otherwise create. Auto-creates categories.
+   */
+  bulkImport(rows: Array<Record<string, string>>): { created: number; updated: number; errors: Array<{ row: number; message: string }> } {
+    authService.assertPermission('product.edit')
+    const db = getDb()
+    let created = 0
+    let updated = 0
+    const errors: Array<{ row: number; message: string }> = []
+
+    const cats = new Map(db.select().from(s.categories).all().map((c) => [c.name.trim(), c.id]))
+    const unitByName = new Map<string, number>()
+    for (const u of db.select().from(s.units).all()) {
+      unitByName.set(u.name.trim(), u.id)
+      if (u.nameEn) unitByName.set(u.nameEn.trim().toLowerCase(), u.id)
+      if (u.shortCode) unitByName.set(u.shortCode.trim().toLowerCase(), u.id)
+    }
+
+    const pick = (r: Record<string, string>, ...keys: string[]) => {
+      for (const k of keys) if (r[k] != null && String(r[k]).trim() !== '') return String(r[k]).trim()
+      return ''
+    }
+    const toPi = (v: string) => Math.round((parseFloat(v) || 0) * 100)
+    const truthy = (v: string) => /^(1|نعم|yes|true|y)$/i.test(v.trim())
+
+    rows.forEach((raw, idx) => {
+      const rowNo = idx + 2
+      try {
+        const name = pick(raw, 'name', 'الاسم', 'الصنف')
+        if (!name) {
+          if (Object.values(raw).every((v) => !String(v).trim())) return
+          throw new Error('الاسم مطلوب')
+        }
+        const barcode = pick(raw, 'barcode', 'الباركود')
+        const catName = pick(raw, 'category', 'الفئة')
+        const unitName = pick(raw, 'unit', 'الوحدة')
+        const cost = toPi(pick(raw, 'costPrice', 'التكلفة', 'cost') || '0')
+        const sell = toPi(pick(raw, 'sellPrice', 'سعر البيع', 'price') || '0')
+        const stockQty = parseFloat(pick(raw, 'stock', 'المخزون', 'الكمية') || '0') || 0
+        const isWeighed = truthy(pick(raw, 'isWeighed', 'بالوزن'))
+        const taxRate = Math.round((parseFloat(pick(raw, 'taxRate', 'الضريبة') || '0') || 0) * 100)
+
+        let categoryId: number | null = null
+        if (catName) {
+          categoryId = cats.get(catName) ?? null
+          if (!categoryId) {
+            const r = db.insert(s.categories).values({ publicId: genId('cat_'), name: catName }).run()
+            categoryId = Number(r.lastInsertRowid)
+            cats.set(catName, categoryId)
+          }
+        }
+        const unitId = unitName ? unitByName.get(unitName) ?? unitByName.get(unitName.toLowerCase()) ?? null : null
+
+        let productId: number | null = null
+        if (barcode) {
+          const bc = db.select().from(s.productBarcodes).where(eq(s.productBarcodes.barcode, barcode)).get()
+          if (bc) productId = bc.productId
+        }
+
+        const values = { name, categoryId, unitId, costPrice: cost, sellPrice: sell, taxRateBp: taxRate, isWeighed, trackStock: true, updatedAt: Date.now() }
+
+        if (productId) {
+          db.update(s.products).set(values).where(eq(s.products.id, productId)).run()
+          const stk = db.select().from(s.stock).where(and(eq(s.stock.productId, productId), eq(s.stock.branchId, 1))).get()
+          if (stk) db.update(s.stock).set({ quantity: stockQty, updatedAt: Date.now() }).where(eq(s.stock.id, stk.id)).run()
+          else db.insert(s.stock).values({ branchId: 1, productId, quantity: stockQty, avgCost: cost }).run()
+          updated++
+        } else {
+          const r = db.insert(s.products).values({ ...values, publicId: genId('prd_'), sku: barcode || null }).run()
+          productId = Number(r.lastInsertRowid)
+          if (barcode) db.insert(s.productBarcodes).values({ productId, barcode }).run()
+          db.insert(s.stock).values({ branchId: 1, productId, quantity: stockQty, avgCost: cost }).run()
+          created++
+        }
+      } catch (e) {
+        errors.push({ row: rowNo, message: e instanceof Error ? e.message : 'خطأ' })
+      }
+    })
+    return { created, updated, errors }
+  }
+}
+
+/** EAN-13 check digit for a 12-digit body. */
+function ean13CheckDigit(body12: string): string {
+  let sum = 0
+  for (let i = 0; i < 12; i++) {
+    const d = body12.charCodeAt(i) - 48
+    sum += i % 2 === 0 ? d : d * 3
+  }
+  return String((10 - (sum % 10)) % 10)
 }
 
 import { inArray } from 'drizzle-orm'

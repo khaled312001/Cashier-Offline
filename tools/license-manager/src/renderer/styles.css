@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, system-ui, sans-serif; color-scheme: light; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: #f1f5f9; color: #1e293b; -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
+input, textarea, select { user-select: text; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed; }
+  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 shadow-sm; }
+  .btn-ghost { @apply btn bg-white text-ink-700 border border-ink-200 hover:bg-ink-50; }
+  .btn-soft { @apply btn bg-brand-50 text-brand-700 hover:bg-brand-100; }
+  .btn-danger { @apply btn bg-rose-600 text-white hover:bg-rose-700; }
+  .btn-success { @apply btn bg-emerald-600 text-white hover:bg-emerald-700; }
+  .card { @apply bg-white rounded-2xl shadow-card border border-ink-200/70; }
+  .input { @apply bg-white border border-ink-300 rounded-xl px-3.5 py-2.5 text-ink-800 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 w-full placeholder:text-ink-400; }
+  .label { @apply text-sm font-medium text-ink-600 mb-1.5 block; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold; }
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }

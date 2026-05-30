@@ -1,0 +1,31 @@
+appId: com.barmagly.licensemanager
+productName: Barmagly License Manager
+copyright: Copyright © 2026 Barmagly
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+  - '**/*.node'
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false

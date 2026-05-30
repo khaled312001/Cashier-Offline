@@ -36,6 +36,9 @@ export const CH = {
   productsUpsert: 'products:upsert',
   productsDelete: 'products:delete',
   productsList: 'products:list',
+  productsGenBarcode: 'products:genBarcode',
+  productsImportTemplate: 'products:importTemplate',
+  productsBulkImport: 'products:bulkImport',
   categoriesList: 'categories:list',
   categoriesUpsert: 'categories:upsert',
   unitsList: 'units:list',
@@ -158,6 +161,9 @@ export interface Api {
     upsert(input: ProductInput): Promise<Product>
     delete(id: number): Promise<void>
     list(opts?: { categoryId?: number; limit?: number; offset?: number }): Promise<Product[]>
+    genBarcode(): Promise<string>
+    downloadTemplate(): Promise<{ saved: boolean; path?: string }>
+    bulkImport(rows: Array<Record<string, string>>): Promise<{ created: number; updated: number; errors: Array<{ row: number; message: string }> }>
     listCategories(): Promise<Category[]>
     upsertCategory(input: Partial<Category> & { name: string }): Promise<Category>
     listUnits(): Promise<Unit[]>

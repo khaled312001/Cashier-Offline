@@ -53,6 +53,16 @@ export function registerIpc() {
   handle(CH.productsUpsert, (input: any) => productsService.upsert(input))
   handle(CH.productsDelete, (id: number) => productsService.delete(id))
   handle(CH.productsList, (opts?: any) => productsService.list(opts))
+  handle(CH.productsGenBarcode, () => productsService.genBarcode())
+  handle(CH.productsBulkImport, (rows: any) => productsService.bulkImport(rows))
+  handle(CH.productsImportTemplate, async () => {
+    const { dialog } = await import('electron')
+    const { writeFileSync } = await import('node:fs')
+    const res = await dialog.showSaveDialog({ title: 'حفظ قالب رفع المنتجات', defaultPath: 'products-template.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] })
+    if (res.canceled || !res.filePath) return { saved: false }
+    writeFileSync(res.filePath, productsService.importTemplateCsv(), 'utf-8')
+    return { saved: true, path: res.filePath }
+  })
   handle(CH.categoriesList, () => productsService.listCategories())
   handle(CH.categoriesUpsert, (input: any) => productsService.upsertCategory(input))
   handle(CH.unitsList, () => productsService.listUnits())

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '../../components/Modal'
 import { Icon } from '../../components/Icon'
@@ -9,6 +9,36 @@ import type { Category, Product, ProductInput, Unit } from '@shared/types'
 
 const empty: ProductInput = { name: '', costPrice: 0, sellPrice: 0, trackStock: true, isWeighed: false, barcodes: [] }
 
+/** Minimal CSV parser supporting quoted fields and the template header. */
+function parseCsv(text: string): Array<Record<string, string>> {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith('#'))
+  if (lines.length < 2) return []
+  const splitLine = (line: string): string[] => {
+    const out: string[] = []
+    let cur = ''
+    let inQ = false
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i]
+      if (inQ) {
+        if (c === '"' && line[i + 1] === '"') { cur += '"'; i++ }
+        else if (c === '"') inQ = false
+        else cur += c
+      } else if (c === '"') inQ = true
+      else if (c === ',') { out.push(cur); cur = '' }
+      else cur += c
+    }
+    out.push(cur)
+    return out
+  }
+  const headers = splitLine(lines[0]).map((h) => h.trim())
+  return lines.slice(1).map((line) => {
+    const cells = splitLine(line)
+    const row: Record<string, string> = {}
+    headers.forEach((h, i) => (row[h] = (cells[i] ?? '').trim()))
+    return row
+  })
+}
+
 export function ProductsScreen() {
   const { t } = useTranslation()
   const { can } = useAuth()
@@ -18,6 +48,9 @@ export function ProductsScreen() {
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<ProductInput | null>(null)
   const [barcodeStr, setBarcodeStr] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{ created: number; updated: number; errors: Array<{ row: number; message: string }> } | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const reload = async () =>
     setProducts(query.trim() ? await window.api.products.search(query.trim(), 100) : await window.api.products.list({ limit: 300 }))
@@ -58,7 +91,8 @@ export function ProductsScreen() {
   const save = async () => {
     if (!editing) return
     const barcodes = barcodeStr.split(/[,\s]+/).map((b) => b.trim()).filter(Boolean)
-    await window.api.products.upsert({ ...editing, barcodes })
+    const sku = editing.sku || barcodes[0] || undefined
+    await window.api.products.upsert({ ...editing, sku, barcodes })
     setEditing(null)
     reload()
   }
@@ -66,6 +100,38 @@ export function ProductsScreen() {
   const remove = async (id: number) => {
     if (!confirm('حذف هذا الصنف؟')) return
     await window.api.products.delete(id)
+    reload()
+  }
+
+  const generateBarcode = async () => {
+    const code = await window.api.products.genBarcode()
+    setBarcodeStr((prev) => (prev.trim() ? prev : code))
+  }
+
+  const printLabel = async (id: number) => {
+    const copies = Number(prompt('عدد الملصقات؟', '1') || '1')
+    if (!copies || copies < 1) return
+    try {
+      await window.api.hardware.printLabel({ productIds: [id], copies })
+    } catch (e) {
+      alert((e as Error).message)
+    }
+  }
+
+  const downloadTemplate = async () => {
+    const r = await window.api.products.downloadTemplate()
+    if (r.saved) alert('تم حفظ القالب. افتحه بالإكسل، املأ المنتجات، احفظه بصيغة CSV ثم ارفعه.')
+  }
+
+  const onFilePicked = async (file: File) => {
+    const text = await file.text()
+    const rows = parseCsv(text)
+    if (rows.length === 0) {
+      alert('الملف فارغ أو غير صالح')
+      return
+    }
+    const res = await window.api.products.bulkImport(rows)
+    setImportResult(res)
     reload()
   }
 
@@ -77,12 +143,29 @@ export function ProductsScreen() {
           <p className="text-sm text-ink-400">إدارة الأصناف والأسعار والباركود</p>
         </div>
         {can('product.edit') && (
-          <button className="btn-primary" onClick={openNew}>
-            <Icon name="plus" className="h-4 w-4" />
-            {t('common.add')}
-          </button>
+          <div className="flex gap-2">
+            <button className="btn-ghost" onClick={() => { setImportResult(null); setImporting(true) }}>
+              <Icon name="download" className="h-4 w-4" /> رفع منتجات (Excel)
+            </button>
+            <button className="btn-primary" onClick={openNew}>
+              <Icon name="plus" className="h-4 w-4" />
+              {t('common.add')}
+            </button>
+          </div>
         )}
       </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) onFilePicked(f)
+          e.target.value = ''
+        }}
+      />
 
       <div className="relative mb-4">
         <Icon name="search" className="pointer-events-none absolute top-1/2 -translate-y-1/2 start-3.5 h-5 w-5 text-ink-400" />
@@ -117,16 +200,21 @@ export function ProductsScreen() {
                   {can('product.view_cost') && <td className="p-3 text-ink-400">{formatMoney(p.costPrice)}</td>}
                   <td className="p-3 font-bold text-brand-600">{formatMoney(p.sellPrice)}</td>
                   <td className="p-3 text-end">
-                    {can('product.edit') && (
-                      <div className="flex justify-end gap-1">
-                        <button className="btn-ghost h-8 px-2.5 text-xs" onClick={() => openEdit(p)}>
-                          <Icon name="edit" className="h-3.5 w-3.5" />
-                        </button>
-                        <button className="btn-ghost h-8 px-2.5 text-xs text-rose-600" onClick={() => remove(p.id)}>
-                          <Icon name="trash" className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex justify-end gap-1">
+                      <button className="btn-ghost h-8 px-2.5 text-xs" title="طباعة ملصق باركود" onClick={() => printLabel(p.id)}>
+                        <Icon name="barcode" className="h-3.5 w-3.5" />
+                      </button>
+                      {can('product.edit') && (
+                        <>
+                          <button className="btn-ghost h-8 px-2.5 text-xs" onClick={() => openEdit(p)}>
+                            <Icon name="edit" className="h-3.5 w-3.5" />
+                          </button>
+                          <button className="btn-ghost h-8 px-2.5 text-xs text-rose-600" onClick={() => remove(p.id)}>
+                            <Icon name="trash" className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -135,6 +223,7 @@ export function ProductsScreen() {
         )}
       </div>
 
+      {/* Add / edit product */}
       <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? t('common.edit') : t('common.add')} width="max-w-xl">
         {editing && (
           <div className="space-y-3">
@@ -173,8 +262,13 @@ export function ProductsScreen() {
               </div>
             </div>
             <div>
-              <label className="label">الباركود (افصل بفاصلة لأكثر من باركود)</label>
-              <input className="input" dir="ltr" value={barcodeStr} onChange={(e) => setBarcodeStr(e.target.value)} />
+              <label className="label">الباركود (هو كود الصنف — افصل بفاصلة لأكثر من باركود)</label>
+              <div className="flex gap-2">
+                <input className="input flex-1" dir="ltr" value={barcodeStr} onChange={(e) => setBarcodeStr(e.target.value)} placeholder="امسح الباركود أو اضغط توليد" />
+                <button type="button" className="btn-ghost whitespace-nowrap" onClick={generateBarcode}>
+                  <Icon name="barcode" className="h-4 w-4" /> توليد
+                </button>
+              </div>
             </div>
             <div className="flex gap-6 pt-1">
               <label className="flex items-center gap-2 text-sm text-ink-700">
@@ -192,6 +286,41 @@ export function ProductsScreen() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Bulk import */}
+      <Modal open={importing} onClose={() => setImporting(false)} title="رفع منتجات المتجر (Excel / CSV)" width="max-w-xl">
+        <div className="space-y-4">
+          <ol className="space-y-2 rounded-xl bg-ink-50 p-4 text-sm text-ink-600">
+            <li>1. حمّل قالب الإكسل المنسّق واضغط الزر بالأسفل.</li>
+            <li>2. افتحه بالإكسل واملأ المنتجات (الاسم، الباركود، الفئة، الوحدة، التكلفة، سعر البيع، المخزون، بالوزن، الضريبة).</li>
+            <li>3. احفظه بصيغة <b>CSV UTF-8</b> ثم ارفعه هنا — سيُضاف/يُحدَّث المتجر فورًا.</li>
+          </ol>
+          <div className="flex gap-2">
+            <button className="btn-ghost flex-1" onClick={downloadTemplate}>
+              <Icon name="download" className="h-4 w-4" /> تحميل القالب
+            </button>
+            <button className="btn-primary flex-1" onClick={() => fileRef.current?.click()}>
+              <Icon name="box" className="h-4 w-4" /> اختيار ملف ورفعه
+            </button>
+          </div>
+          {importResult && (
+            <div className="rounded-xl border border-ink-200 p-4 text-sm">
+              <div className="mb-2 flex gap-4">
+                <span className="chip bg-emerald-100 text-emerald-700">أُضيف: {importResult.created}</span>
+                <span className="chip bg-brand-100 text-brand-700">حُدِّث: {importResult.updated}</span>
+                {importResult.errors.length > 0 && <span className="chip bg-rose-100 text-rose-700">أخطاء: {importResult.errors.length}</span>}
+              </div>
+              {importResult.errors.length > 0 && (
+                <div className="max-h-40 space-y-1 overflow-auto text-xs text-rose-600">
+                  {importResult.errors.map((er, i) => (
+                    <div key={i}>سطر {er.row}: {er.message}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   )
