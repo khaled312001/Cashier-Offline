@@ -1,11 +1,26 @@
 node_modules/
 out/
 dist/
+release/
 .dev-userdata/
 *.log
 
-# License signing keys MUST NEVER be committed
+# build/test artifacts
+smoke-results.txt
+smoke.ts
+*.png
+headcheck.txt
+bd-dump.txt
+
+# nested License Manager tool build output
+tools/license-manager/node_modules/
+tools/license-manager/out/
+tools/license-manager/release/
+tools/license-manager/.dev-userdata/
+
+# License signing keys MUST NEVER be committed (public key IS committed for the app)
 tools/license-cli/keys/
+tools/license-manager/keys/
 resources/keys/license_private.pem
 *.lic
 
