@@ -21,7 +21,22 @@ export const DEFAULT_SETTINGS: AppSettings = {
     showLogo: true,
     paper: '80',
     copies: 1,
-    renderMode: 'text'
+    renderMode: 'text',
+    printMethod: 'html',
+    printerName: '',
+    escposInterface: '',
+    autoPrint: true,
+    openDrawerOnCash: true,
+    fontScale: 1
+  },
+  label: {
+    printerName: '',
+    widthMm: 40,
+    heightMm: 30,
+    barcodeType: 'code128',
+    showName: true,
+    showPrice: true,
+    columns: 1
   },
   pos: {
     defaultOrderType: 'quick',

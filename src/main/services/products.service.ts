@@ -218,6 +218,39 @@ class ProductsService {
     return row?.q ?? 0
   }
 
+  // ---- Product variants (size/color, own price + stock) ----
+  listVariants(productId: number) {
+    return getDb()
+      .select()
+      .from(s.productVariants)
+      .where(and(eq(s.productVariants.productId, productId), eq(s.productVariants.isActive, true)))
+      .all()
+      .map((v) => ({ id: v.id, productId: v.productId, name: v.name, sku: v.sku, sellPrice: v.sellPrice, costPrice: v.costPrice }))
+  }
+
+  upsertVariant(input: { id?: number; productId: number; name: string; sku?: string; sellPrice?: number | null; costPrice?: number | null }): number {
+    authService.assertPermission('product.edit')
+    const db = getDb()
+    if (input.id) {
+      db.update(s.productVariants)
+        .set({ name: input.name, sku: input.sku ?? null, sellPrice: input.sellPrice ?? null, costPrice: input.costPrice ?? null, updatedAt: Date.now() })
+        .where(eq(s.productVariants.id, input.id))
+        .run()
+      return input.id
+    }
+    const id = Number(
+      db.insert(s.productVariants).values({ publicId: genId('var_'), productId: input.productId, name: input.name, sku: input.sku ?? null, sellPrice: input.sellPrice ?? null, costPrice: input.costPrice ?? null }).run().lastInsertRowid
+    )
+    db.update(s.products).set({ hasVariants: true, updatedAt: Date.now() }).where(eq(s.products.id, input.productId)).run()
+    return id
+  }
+
+  deleteVariant(id: number) {
+    authService.assertPermission('product.edit')
+    const db = getDb()
+    db.update(s.productVariants).set({ isActive: false }).where(eq(s.productVariants.id, id)).run()
+  }
+
   /** Generate a unique internal EAN-13 barcode (prefix 200 = in-store use). */
   genBarcode(): string {
     const db = getDb()

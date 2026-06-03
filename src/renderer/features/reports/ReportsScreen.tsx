@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatMoney } from '../../lib/format'
 import { Icon, type IconName } from '../../components/Icon'
+import { toast } from '../../stores/toastStore'
 
 interface Dash {
   todaySales: number
@@ -56,7 +57,7 @@ export function ReportsScreen() {
 
   const exportCsv = async () => {
     const res = await window.api.reports2.exportCsv(rangeMs(range))
-    if (res.saved) alert('تم تصدير الملف بنجاح')
+    if (res.saved) toast.ok('تم تصدير الملف بنجاح')
   }
 
   const maxDay = Math.max(1, ...(summary?.byDay.map((d) => d.total) ?? [1]))

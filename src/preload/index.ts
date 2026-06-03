@@ -140,6 +140,40 @@ const api: Api = {
     ledger: (id) => inv(CH.customersLedger, id),
     pay: (input) => inv(CH.customersPay, input)
   },
+  customerGroups: {
+    list: () => inv(CH.custGroupsList),
+    upsert: (input) => inv(CH.custGroupsUpsert, input),
+    delete: (id) => inv(CH.custGroupsDelete, id)
+  },
+  modifiers: {
+    listGroups: () => inv(CH.modListGroups),
+    upsertGroup: (input) => inv(CH.modUpsertGroup, input),
+    deleteGroup: (id) => inv(CH.modDeleteGroup, id),
+    upsertModifier: (input) => inv(CH.modUpsertModifier, input),
+    deleteModifier: (id) => inv(CH.modDeleteModifier, id),
+    groupsForProduct: (productId) => inv(CH.modGroupsForProduct, productId),
+    setProductGroups: (productId, groupIds) => inv(CH.modSetProductGroups, productId, groupIds)
+  },
+  combos: {
+    components: (productId) => inv(CH.comboComponents, productId),
+    setComponents: (productId, components) => inv(CH.comboSetComponents, productId, components)
+  },
+  kot: {
+    sections: () => inv(CH.kotSections),
+    upsertSection: (input) => inv(CH.kotUpsertSection, input),
+    deleteSection: (id) => inv(CH.kotDeleteSection, id),
+    printForSale: (saleId) => inv(CH.kotPrintForSale, saleId),
+    listOpen: (sectionId) => inv(CH.kotListOpen, sectionId),
+    setTicketStatus: (kotId, status) => inv(CH.kotSetTicketStatus, kotId, status)
+  },
+  variants: {
+    list: (productId) => inv(CH.variantsList, productId),
+    upsert: (input) => inv(CH.variantsUpsert, input),
+    delete: (id) => inv(CH.variantsDelete, id)
+  },
+  batches: {
+    expiring: (days) => inv(CH.batchesExpiring, days)
+  },
   license: {
     status: () => inv(CH.licenseStatus),
     activateText: (key) => inv(CH.licenseActivateText, key),

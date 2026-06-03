@@ -136,6 +136,34 @@ export const CH = {
   reportsExportCsv: 'reports:exportCsv',
   // hardware extended
   hwPrintLabel: 'hw:printLabel',
+  // modifiers
+  modListGroups: 'mod:listGroups',
+  modUpsertGroup: 'mod:upsertGroup',
+  modDeleteGroup: 'mod:deleteGroup',
+  modUpsertModifier: 'mod:upsertModifier',
+  modDeleteModifier: 'mod:deleteModifier',
+  modGroupsForProduct: 'mod:groupsForProduct',
+  modSetProductGroups: 'mod:setProductGroups',
+  // combos
+  comboComponents: 'combo:components',
+  comboSetComponents: 'combo:setComponents',
+  // kot / kitchen
+  kotSections: 'kot:sections',
+  kotUpsertSection: 'kot:upsertSection',
+  kotDeleteSection: 'kot:deleteSection',
+  kotPrintForSale: 'kot:printForSale',
+  kotListOpen: 'kot:listOpen',
+  kotSetTicketStatus: 'kot:setTicketStatus',
+  // variants
+  variantsList: 'variants:list',
+  variantsUpsert: 'variants:upsert',
+  variantsDelete: 'variants:delete',
+  // batches / expiry
+  batchesExpiring: 'batches:expiring',
+  // customer groups
+  custGroupsList: 'custGroups:list',
+  custGroupsUpsert: 'custGroups:upsert',
+  custGroupsDelete: 'custGroups:delete',
   // app
   appGetVersion: 'app:getVersion',
   appGetPaths: 'app:getPaths',
@@ -278,6 +306,40 @@ export interface Api {
   customers2: {
     ledger(customerId: number): Promise<Array<{ id: number; type: string; amount: number; balanceAfter: number; note: string | null; createdAt: number }>>
     pay(input: { customerId: number; amount: number; note?: string }): Promise<void>
+  }
+  customerGroups: {
+    list(): Promise<Array<{ id: number; name: string; discountBp: number; priceLevel: number }>>
+    upsert(input: { id?: number; name: string; discountBp?: number; priceLevel?: number }): Promise<{ id: number; name: string; discountBp: number; priceLevel: number }>
+    delete(id: number): Promise<void>
+  }
+  modifiers: {
+    listGroups(): Promise<Array<{ id: number; name: string; minSelect: number; maxSelect: number; isRequired: boolean; sortOrder: number; modifiers: Array<{ id: number; groupId: number; name: string; price: number; isDefault: boolean; sortOrder: number }> }>>
+    upsertGroup(input: { id?: number; name: string; minSelect?: number; maxSelect?: number; isRequired?: boolean }): Promise<number>
+    deleteGroup(id: number): Promise<void>
+    upsertModifier(input: { id?: number; groupId: number; name: string; price?: number; isDefault?: boolean }): Promise<number>
+    deleteModifier(id: number): Promise<void>
+    groupsForProduct(productId: number): Promise<Array<{ id: number; name: string; minSelect: number; maxSelect: number; isRequired: boolean; modifiers: Array<{ id: number; groupId: number; name: string; price: number; isDefault: boolean; sortOrder: number }> }>>
+    setProductGroups(productId: number, groupIds: number[]): Promise<void>
+  }
+  combos: {
+    components(productId: number): Promise<Array<{ id: number; componentProductId: number; componentName: string; quantity: number; isSwappable: boolean; extraPrice: number }>>
+    setComponents(productId: number, components: Array<{ componentProductId: number; quantity: number; extraPrice?: number; isSwappable?: boolean }>): Promise<void>
+  }
+  kot: {
+    sections(): Promise<Array<{ id: number; name: string; printerId: number | null }>>
+    upsertSection(input: { id?: number; name: string; printerId?: number | null }): Promise<number>
+    deleteSection(id: number): Promise<void>
+    printForSale(saleId: number): Promise<{ tickets: number }>
+    listOpen(sectionId?: number): Promise<Array<{ id: number; ticketNo: string; sectionId: number | null; sectionName: string; status: string; createdAt: number; saleId: number; lines: Array<{ id: number; name: string; quantity: number; status: string }> }>>
+    setTicketStatus(kotId: number, status: string): Promise<void>
+  }
+  variants: {
+    list(productId: number): Promise<Array<{ id: number; productId: number; name: string; sku: string | null; sellPrice: number | null; costPrice: number | null }>>
+    upsert(input: { id?: number; productId: number; name: string; sku?: string; sellPrice?: number | null; costPrice?: number | null }): Promise<number>
+    delete(id: number): Promise<void>
+  }
+  batches: {
+    expiring(days?: number): Promise<Array<{ id: number; productId: number; productName: string; batchNo: string | null; expiryDate: number | null; quantity: number }>>
   }
   app: {
     getVersion(): Promise<string>

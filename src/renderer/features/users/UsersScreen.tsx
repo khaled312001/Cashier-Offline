@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../../components/Modal'
 import { Icon } from '../../components/Icon'
+import { toast } from '../../stores/toastStore'
+import { confirmDialog } from '../../stores/confirmStore'
 import type { PermissionKey } from '@shared/permissions'
 
 interface UserRow { id: number; name: string; username: string; roleId: number; roleName: string; isActive: boolean }
@@ -34,12 +36,13 @@ export function UsersScreen() {
   }
 
   const deleteUser = async (id: number) => {
-    if (!confirm('حذف هذا المستخدم؟')) return
+    if (!(await confirmDialog({ message: 'حذف هذا المستخدم؟', danger: true, confirmLabel: 'حذف' }))) return
     try {
       await window.api.users.delete(id)
+      toast.ok('تم حذف المستخدم')
       reload()
     } catch (e) {
-      alert((e as Error).message)
+      toast.err((e as Error).message)
     }
   }
 
@@ -63,8 +66,9 @@ export function UsersScreen() {
     try {
       await window.api.users.setPermsForRole(permRole.id, [...rolePerms])
       setPermRole(null)
+      toast.ok('تم حفظ الصلاحيات')
     } catch (e) {
-      alert((e as Error).message)
+      toast.err((e as Error).message)
     }
   }
 

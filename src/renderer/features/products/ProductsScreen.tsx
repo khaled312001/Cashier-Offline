@@ -4,7 +4,12 @@ import { Modal } from '../../components/Modal'
 import { Icon } from '../../components/Icon'
 import { EmptyBoxArt } from '../../components/Illustration'
 import { useAuth } from '../../stores/authStore'
+import { useSettings } from '../../stores/settingsStore'
 import { formatMoney, toPiasters, toPounds } from '../../lib/format'
+import { toast } from '../../stores/toastStore'
+import { confirmDialog } from '../../stores/confirmStore'
+import { ModifierGroupsManager } from './ModifierGroupsManager'
+import { ProductExtrasManager } from './ProductExtrasManager'
 import type { Category, Product, ProductInput, Unit } from '@shared/types'
 
 const empty: ProductInput = { name: '', costPrice: 0, sellPrice: 0, trackStock: true, isWeighed: false, barcodes: [] }
@@ -42,6 +47,8 @@ function parseCsv(text: string): Array<Record<string, string>> {
 export function ProductsScreen() {
   const { t } = useTranslation()
   const { can } = useAuth()
+  const { settings } = useSettings()
+  const isRestaurant = settings.businessType === 'restaurant'
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [units, setUnits] = useState<Unit[]>([])
@@ -50,6 +57,10 @@ export function ProductsScreen() {
   const [barcodeStr, setBarcodeStr] = useState('')
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ created: number; updated: number; errors: Array<{ row: number; message: string }> } | null>(null)
+  const [showGroups, setShowGroups] = useState(false)
+  const [extrasFor, setExtrasFor] = useState<Product | null>(null)
+  const [labelProduct, setLabelProduct] = useState<Product | null>(null)
+  const [labelCopies, setLabelCopies] = useState('1')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const reload = async () =>
@@ -98,8 +109,9 @@ export function ProductsScreen() {
   }
 
   const remove = async (id: number) => {
-    if (!confirm('حذف هذا الصنف؟')) return
+    if (!(await confirmDialog({ message: 'هل تريد حذف هذا الصنف؟', danger: true, confirmLabel: 'حذف' }))) return
     await window.api.products.delete(id)
+    toast.ok('تم حذف الصنف')
     reload()
   }
 
@@ -108,26 +120,25 @@ export function ProductsScreen() {
     setBarcodeStr((prev) => (prev.trim() ? prev : code))
   }
 
-  const printLabel = async (id: number) => {
-    const copies = Number(prompt('عدد الملصقات؟', '1') || '1')
-    if (!copies || copies < 1) return
+  const printLabel = async (id: number, copies: number) => {
     try {
       await window.api.hardware.printLabel({ productIds: [id], copies })
+      toast.ok('تم إرسال الملصق للطباعة')
     } catch (e) {
-      alert((e as Error).message)
+      toast.err((e as Error).message)
     }
   }
 
   const downloadTemplate = async () => {
     const r = await window.api.products.downloadTemplate()
-    if (r.saved) alert('تم حفظ القالب. افتحه بالإكسل، املأ المنتجات، احفظه بصيغة CSV ثم ارفعه.')
+    if (r.saved) toast.ok('تم حفظ القالب — املأه بالإكسل واحفظه CSV ثم ارفعه')
   }
 
   const onFilePicked = async (file: File) => {
     const text = await file.text()
     const rows = parseCsv(text)
     if (rows.length === 0) {
-      alert('الملف فارغ أو غير صالح')
+      toast.err('الملف فارغ أو غير صالح')
       return
     }
     const res = await window.api.products.bulkImport(rows)
@@ -144,6 +155,11 @@ export function ProductsScreen() {
         </div>
         {can('product.edit') && (
           <div className="flex gap-2">
+            {isRestaurant && (
+              <button className="btn-ghost" onClick={() => setShowGroups(true)}>
+                <Icon name="list" className="h-4 w-4" /> الإضافات والمجموعات
+              </button>
+            )}
             <button className="btn-ghost" onClick={() => { setImportResult(null); setImporting(true) }}>
               <Icon name="download" className="h-4 w-4" /> رفع منتجات (Excel)
             </button>
@@ -201,11 +217,14 @@ export function ProductsScreen() {
                   <td className="p-3 font-bold text-brand-600">{formatMoney(p.sellPrice)}</td>
                   <td className="p-3 text-end">
                     <div className="flex justify-end gap-1">
-                      <button className="btn-ghost h-8 px-2.5 text-xs" title="طباعة ملصق باركود" onClick={() => printLabel(p.id)}>
+                      <button className="btn-ghost h-8 px-2.5 text-xs" title="طباعة ملصق باركود" onClick={() => { setLabelProduct(p); setLabelCopies('1') }}>
                         <Icon name="barcode" className="h-3.5 w-3.5" />
                       </button>
                       {can('product.edit') && (
                         <>
+                          <button className="btn-ghost h-8 px-2.5 text-xs" title="الخيارات (متغيّرات / إضافات / وجبة)" onClick={() => setExtrasFor(p)}>
+                            <Icon name="settings" className="h-3.5 w-3.5" />
+                          </button>
                           <button className="btn-ghost h-8 px-2.5 text-xs" onClick={() => openEdit(p)}>
                             <Icon name="edit" className="h-3.5 w-3.5" />
                           </button>
@@ -321,6 +340,36 @@ export function ProductsScreen() {
             </div>
           )}
         </div>
+      </Modal>
+
+      <ModifierGroupsManager open={showGroups} onClose={() => setShowGroups(false)} />
+      <ProductExtrasManager product={extrasFor} open={!!extrasFor} onClose={() => { setExtrasFor(null); reload() }} />
+
+      {/* Print barcode label */}
+      <Modal open={!!labelProduct} onClose={() => setLabelProduct(null)} title="طباعة ملصق باركود">
+        {labelProduct && (
+          <div className="space-y-3">
+            <p className="text-sm text-ink-600">{labelProduct.name}</p>
+            <div>
+              <label className="label">عدد الملصقات</label>
+              <input className="input text-center text-lg" type="number" min={1} value={labelCopies} onChange={(e) => setLabelCopies(e.target.value)} autoFocus />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button className="btn-ghost" onClick={() => setLabelProduct(null)}>{t('common.cancel')}</button>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  const n = Number(labelCopies) || 1
+                  const id = labelProduct.id
+                  setLabelProduct(null)
+                  printLabel(id, Math.max(1, n))
+                }}
+              >
+                <Icon name="print" className="h-4 w-4" /> طباعة
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

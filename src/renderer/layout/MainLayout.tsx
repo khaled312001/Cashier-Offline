@@ -10,6 +10,7 @@ import { BrandMark } from '../components/Brand'
 const NAV: { to: string; key: string; icon: IconName; restaurantOnly?: boolean; perm?: string }[] = [
   { to: '/pos', key: 'nav.pos', icon: 'cart' },
   { to: '/tables', key: 'nav.tables', icon: 'tables', restaurantOnly: true },
+  { to: '/kitchen', key: 'nav.kitchen', icon: 'receipt', restaurantOnly: true },
   { to: '/sales', key: 'nav.sales', icon: 'history' },
   { to: '/products', key: 'nav.products', icon: 'box' },
   { to: '/inventory', key: 'nav.inventory', icon: 'tag' },

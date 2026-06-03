@@ -1,4 +1,4 @@
-import { eq, and, desc, sql } from 'drizzle-orm'
+import { eq, and, desc, asc, lte, sql } from 'drizzle-orm'
 import { getDb } from '../db/connection'
 import * as s from '@db/schema'
 import { authService } from './auth.service'
@@ -18,17 +18,21 @@ class InventoryService {
    * Apply a signed stock delta and record a movement. Used by sales, returns,
    * purchases, adjustments, etc. Must be called inside a transaction by callers
    * that change multiple rows; standalone adjust wraps its own tx.
+   * If `batchFefo` is set on an outgoing move, the nearest-expiry batch(es) are
+   * consumed first (FEFO) for products that track batches.
    */
   applyMovement(opts: {
     productId: number
     quantity: number // signed
     type: MovementType
+    variantId?: number
     unitCost?: number
     reason?: string
     refTable?: string
     refId?: number
     userId?: number
     branchId?: number
+    batchFefo?: boolean
   }) {
     const db = getDb()
     const branchId = opts.branchId ?? 1
@@ -47,11 +51,18 @@ class InventoryService {
         .values({ branchId, productId: opts.productId, quantity: opts.quantity, avgCost: opts.unitCost ?? 0 })
         .run()
     }
+
+    // FEFO batch consumption for outgoing moves (only if batches exist).
+    if (opts.batchFefo && opts.quantity < 0) {
+      this.consumeBatchesFefo(opts.productId, branchId, -opts.quantity)
+    }
+
     db.insert(s.inventoryMovements)
       .values({
         publicId: genId('mov_'),
         branchId,
         productId: opts.productId,
+        variantId: opts.variantId ?? null,
         type: opts.type,
         quantity: opts.quantity,
         unitCost: opts.unitCost ?? 0,
@@ -61,6 +72,60 @@ class InventoryService {
         userId: opts.userId ?? null
       })
       .run()
+  }
+
+  /** Decrement nearest-expiry batches first. Silently no-ops if no batches. */
+  private consumeBatchesFefo(productId: number, branchId: number, qtyOut: number) {
+    const db = getDb()
+    const batches = db
+      .select()
+      .from(s.batches)
+      .where(and(eq(s.batches.productId, productId), eq(s.batches.branchId, branchId), sql`${s.batches.quantity} > 0`))
+      .orderBy(sql`${s.batches.expiryDate} IS NULL, ${s.batches.expiryDate} ASC`)
+      .all()
+    let remaining = qtyOut
+    for (const b of batches) {
+      if (remaining <= 0) break
+      const take = Math.min(b.quantity, remaining)
+      db.update(s.batches).set({ quantity: b.quantity - take }).where(eq(s.batches.id, b.id)).run()
+      remaining -= take
+    }
+  }
+
+  /** Add a batch (used by goods-received). */
+  addBatch(input: { productId: number; branchId?: number; batchNo?: string; expiryDate?: number | null; quantity: number; costPrice?: number }) {
+    const db = getDb()
+    db.insert(s.batches)
+      .values({
+        productId: input.productId,
+        branchId: input.branchId ?? 1,
+        batchNo: input.batchNo ?? null,
+        expiryDate: input.expiryDate ?? null,
+        quantity: input.quantity,
+        costPrice: input.costPrice ?? 0,
+        receivedAt: Date.now()
+      })
+      .run()
+  }
+
+  /** Batches expiring within `days` (default 30) with remaining stock. */
+  expiringBatches(days = 30) {
+    const db = getDb()
+    const limit = Date.now() + days * 86_400_000
+    return db
+      .select({
+        id: s.batches.id,
+        productId: s.batches.productId,
+        productName: s.products.name,
+        batchNo: s.batches.batchNo,
+        expiryDate: s.batches.expiryDate,
+        quantity: s.batches.quantity
+      })
+      .from(s.batches)
+      .innerJoin(s.products, eq(s.batches.productId, s.products.id))
+      .where(and(sql`${s.batches.quantity} > 0`, sql`${s.batches.expiryDate} IS NOT NULL`, lte(s.batches.expiryDate, limit)))
+      .orderBy(asc(s.batches.expiryDate))
+      .all()
   }
 
   adjust(input: { productId: number; quantity: number; reason: string; unitCost?: number }) {

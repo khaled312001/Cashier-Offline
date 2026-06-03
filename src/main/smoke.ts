@@ -5,13 +5,14 @@
  */
 import { app } from 'electron'
 import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { log } from './logger'
 import { getPaths } from './paths'
 import { getDb, rawClient } from './db/connection'
 import * as schema from '@db/schema'
 import { canonicalJson, verifyLicenseSignature } from './security/crypto'
+import { productInputSchema, createSaleSchema, customerPaySchema } from '@shared/validators'
 import { getMachineId } from './security/machineId'
 import { authService } from './services/auth.service'
 import { shiftService } from './services/shift.service'
@@ -22,6 +23,9 @@ import { customersService } from './services/customers.service'
 import { reportsService } from './services/reports.service'
 import { settingsService } from './services/settings.service'
 import { restaurantService } from './services/restaurant.service'
+import { modifiersService } from './services/modifiers.service'
+import { comboService } from './services/combo.service'
+import { kotService } from './services/kot.service'
 import { suppliersService } from './services/suppliers.service'
 import { usersService } from './services/users.service'
 import { expensesService } from './services/expenses.service'
@@ -352,6 +356,130 @@ export async function runSmoke() {
     restaurantService.freeTable(firstTable.id)
     check('table freed', restaurantService.listAreas()[0].tables[0].status === 'available')
 
+    // ---------------------------------------------------------------- MODIFIERS / ADD-ONS
+    section('Modifiers / Add-ons')
+    const grpId = modifiersService.upsertGroup({ name: 'إضافات', minSelect: 0, maxSelect: 3, isRequired: false })
+    const mod1 = modifiersService.upsertModifier({ groupId: grpId, name: 'جبنة', price: 500, isDefault: false })
+    const mod2 = modifiersService.upsertModifier({ groupId: grpId, name: 'صوص', price: 300 })
+    check('modifier group + items created', grpId > 0 && mod1 > 0 && mod2 > 0)
+    const burger = productsService.upsert({ name: 'برجر', costPrice: 2000, sellPrice: 5000, barcodes: ['BURGER1'] })
+    modifiersService.setProductGroups(burger.id, [grpId])
+    check('product linked to modifier group', modifiersService.groupsForProduct(burger.id).some((g) => g.id === grpId))
+    check('products.hasModifiers synced', productsService.get(burger.id)!.hasModifiers === true)
+    const modSale = salesService.create({
+      orderType: 'quick',
+      lines: [{
+        lineId: 'mod1', productId: burger.id, name: 'برجر', unitPrice: 5000, costPrice: 2000, quantity: 1,
+        isWeighed: false, discount: 0, taxRateBp: 0, taxInclusive: true,
+        modifiers: [{ modifierId: mod1, name: 'جبنة', price: 500, quantity: 1 }, { modifierId: mod2, name: 'صوص', price: 300, quantity: 1 }]
+      }],
+      payments: [{ method: 'cash', amount: 5800 }]
+    })
+    check('modifier prices added to grand (5000+500+300)', modSale.grandTotal === 5800, modSale.grandTotal)
+    const persistedMods = db.select().from(schema.saleItemModifiers).all()
+    check('sale item modifiers persisted', persistedMods.length >= 2, persistedMods.length)
+
+    // ---------------------------------------------------------------- COMBO / MEAL
+    section('Combo / Meal')
+    const combo = productsService.upsert({ name: 'وجبة كومبو', costPrice: 0, sellPrice: 8000, barcodes: ['COMBO1'] })
+    comboService.setComponents(combo.id, [{ componentProductId: waterId, quantity: 2 }])
+    check('products.isCombo synced', productsService.get(combo.id)!.isCombo === true)
+    check('combo components stored', comboService.componentsForProduct(combo.id).length === 1)
+    const waterBeforeCombo = inventoryService.getStock(waterId)
+    const comboSale = salesService.create({
+      orderType: 'quick',
+      lines: [line(combo.id, 'وجبة كومبو', 8000, 0, 1)],
+      payments: [{ method: 'cash', amount: 8000 }]
+    })
+    check('combo sale completed', comboSale.status === 'completed')
+    check('combo decrements components (water -2)', inventoryService.getStock(waterId) === waterBeforeCombo - 2, inventoryService.getStock(waterId))
+
+    // ---------------------------------------------------------------- VARIANTS
+    section('Product Variants')
+    const tshirt = productsService.upsert({ name: 'تيشيرت', costPrice: 5000, sellPrice: 12000, barcodes: ['TSHIRT1'] })
+    const varId = productsService.upsertVariant({ productId: tshirt.id, name: 'كبير', sellPrice: 13000, costPrice: 5500 })
+    check('variant created', varId > 0)
+    check('products.hasVariants synced', productsService.get(tshirt.id)!.hasVariants === true)
+    check('variants listed', productsService.listVariants(tshirt.id).length >= 1)
+    const varSale = salesService.create({
+      orderType: 'quick',
+      lines: [{ lineId: 'var1', productId: tshirt.id, variantId: varId, name: 'تيشيرت كبير', unitPrice: 13000, costPrice: 5500, quantity: 1, isWeighed: false, discount: 0, taxRateBp: 0, taxInclusive: true }],
+      payments: [{ method: 'cash', amount: 13000 }]
+    })
+    check('variant sale uses variant price', varSale.grandTotal === 13000, varSale.grandTotal)
+    const varMov = db.select().from(schema.inventoryMovements).where(eq(schema.inventoryMovements.variantId, varId)).all()
+    check('movement tagged with variantId', varMov.length >= 1, varMov.length)
+
+    // ---------------------------------------------------------------- BATCHES / FEFO / EXPIRY
+    section('Batches / FEFO + expiry')
+    const med = productsService.upsert({ name: 'دواء', costPrice: 1000, sellPrice: 2500, barcodes: ['MED1'] })
+    const soon = Date.now() + 10 * 86_400_000
+    const later = Date.now() + 200 * 86_400_000
+    inventoryService.addBatch({ productId: med.id, batchNo: 'B-LATER', expiryDate: later, quantity: 100 })
+    inventoryService.addBatch({ productId: med.id, batchNo: 'B-SOON', expiryDate: soon, quantity: 30 })
+    inventoryService.adjust({ productId: med.id, quantity: 130, reason: 'رصيد افتتاحي' })
+    salesService.create({
+      orderType: 'quick',
+      lines: [line(med.id, 'دواء', 2500, 1000, 10)],
+      payments: [{ method: 'cash', amount: 25000 }]
+    })
+    const soonBatch = db.select().from(schema.batches).where(eq(schema.batches.batchNo, 'B-SOON')).get()
+    const laterBatch = db.select().from(schema.batches).where(eq(schema.batches.batchNo, 'B-LATER')).get()
+    check('FEFO consumes nearest-expiry first (30→20)', soonBatch?.quantity === 20, soonBatch?.quantity)
+    check('FEFO leaves later batch intact (100)', laterBatch?.quantity === 100, laterBatch?.quantity)
+    const expiringList = inventoryService.expiringBatches(30)
+    check('expiring alert surfaces near-expiry batch', expiringList.some((b) => b.batchNo === 'B-SOON'))
+    check('expiring alert excludes far-expiry batch', !expiringList.some((b) => b.batchNo === 'B-LATER'))
+
+    // ---------------------------------------------------------------- CUSTOMER GROUPS
+    section('Customer Groups discount')
+    const wholesale = customersService.upsertGroup({ name: 'جملة', discountBp: 1000 }) // 10%
+    check('customer group created', wholesale.id > 0)
+    const wholesaleCust = customersService.upsert({ name: 'عميل جملة', phone: '01555000000', groupId: wholesale.id, creditLimit: 0 })
+    check('group discount resolves to 1000bp', customersService.groupDiscountBp(wholesaleCust.id) === 1000)
+    const grpSale = salesService.create({
+      orderType: 'quick',
+      customerId: wholesaleCust.id,
+      lines: [line(waterId, 'مياه', 10000, 0, 1)],
+      payments: [{ method: 'cash', amount: 9000 }]
+    })
+    check('group discount applied (10000 → 9000)', grpSale.grandTotal === 9000, grpSale.grandTotal)
+    check('group discount recorded on sale', grpSale.discountTotal === 1000, grpSale.discountTotal)
+
+    // ---------------------------------------------------------------- KOT (kitchen tickets)
+    section('KOT kitchen tickets')
+    settingsService.set({ receipt: { ...settingsService.getAll().receipt, printMethod: 'sink' } })
+    const sectionId = kotService.upsertSection({ name: 'المطبخ' })
+    check('kitchen section created', sectionId > 0)
+    const pizza = productsService.upsert({ name: 'بيتزا', costPrice: 3000, sellPrice: 9000, kitchenSectionId: sectionId, barcodes: ['PIZZA1'] })
+    check('product routed to kitchen section', productsService.get(pizza.id)!.kitchenSectionId === sectionId)
+    const kotSale = salesService.create({ orderType: 'dine_in', hold: true, lines: [line(pizza.id, 'بيتزا', 9000, 3000, 2)], payments: [] })
+    const kotRes = await kotService.printForSale(kotSale.id)
+    check('KOT ticket generated', kotRes.tickets >= 1, kotRes.tickets)
+    const openTickets = kotService.listOpenTickets()
+    const myTicket = openTickets.find((tk) => tk.saleId === kotSale.id)
+    check('KOT ticket appears as open', !!myTicket)
+    check('KOT ticket carries its lines', !!myTicket && myTicket.lines.length === 1)
+    if (myTicket) {
+      kotService.setTicketStatus(myTicket.id, 'done')
+      check('KOT ticket can be marked done', !kotService.listOpenTickets().some((tk) => tk.id === myTicket.id))
+    }
+
+    // ---------------------------------------------------------------- VALIDATION (zod)
+    section('Validation (zod)')
+    let zRejectNeg = false
+    try { productInputSchema.parse({ name: 'سالب', costPrice: -5, sellPrice: 100 }) } catch { zRejectNeg = true }
+    check('zod rejects negative price', zRejectNeg)
+    let zRejectEmpty = false
+    try { createSaleSchema.parse({ orderType: 'quick', lines: [], payments: [] }) } catch { zRejectEmpty = true }
+    check('zod rejects sale with no lines', zRejectEmpty)
+    let zRejectPay = false
+    try { customerPaySchema.parse({ customerId: 1, amount: 0 }) } catch { zRejectPay = true }
+    check('zod rejects non-positive payment', zRejectPay)
+    let zAccept = false
+    try { productInputSchema.parse({ name: 'صنف سليم', costPrice: 100, sellPrice: 200 }); zAccept = true } catch { /* */ }
+    check('zod accepts valid product', zAccept)
+
     // ---------------------------------------------------------------- REPORTS
     section('Reports')
     const dash = reportsService.dashboard()
@@ -383,6 +511,16 @@ export async function runSmoke() {
     const bk = await backupService.runNow()
     check('backup file created', !!bk.path)
     check('backup listed', backupService.list().some((b) => b.path === bk.path))
+    // restore must REJECT a corrupt file (integrity check) without touching the live DB
+    const corruptPath = join(dirname(bk.path), 'corrupt-test.db')
+    writeFileSync(corruptPath, 'this is definitely not a sqlite database')
+    let corruptRejected = false
+    try { backupService.restore(corruptPath) } catch { corruptRejected = true }
+    check('restore rejects corrupt backup', corruptRejected)
+    // restore must REJECT a path outside the backup whitelist (path traversal guard)
+    let pathRejected = false
+    try { backupService.restore(join(getPaths().userData, 'evil.db')) } catch { pathRejected = true }
+    check('restore rejects out-of-whitelist path', pathRejected)
 
     // ---------------------------------------------------------------- DB INTEGRITY
     section('DB integrity')

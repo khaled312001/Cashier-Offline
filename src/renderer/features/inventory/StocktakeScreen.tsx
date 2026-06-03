@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Icon } from '../../components/Icon'
 import { formatMoney } from '../../lib/format'
+import { toast } from '../../stores/toastStore'
+import { confirmDialog } from '../../stores/confirmStore'
 
 interface Line { id: number; productId: number; name: string; systemQty: number; countedQty: number | null; unitCost: number }
 
@@ -29,9 +31,9 @@ export function StocktakeScreen() {
 
   const complete = async () => {
     if (!sessionId) return
-    if (!confirm('سيتم تطبيق فروقات الجرد على المخزون. متابعة؟')) return
+    if (!(await confirmDialog({ message: 'سيتم تطبيق فروقات الجرد على المخزون. متابعة؟', confirmLabel: 'إنهاء وتطبيق' }))) return
     const res = await window.api.stocktake.complete(sessionId)
-    alert(`تم الجرد — عُدّلت ${res.adjusted} صنف`)
+    toast.ok(`تم الجرد — عُدّلت ${res.adjusted} صنف`)
     setSessionId(null)
     setLines([])
   }

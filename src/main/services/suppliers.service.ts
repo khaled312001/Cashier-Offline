@@ -23,6 +23,8 @@ export interface PurchaseLineInput {
   quantity: number
   unitCost: number
   taxRateBp?: number
+  batchNo?: string
+  expiryDate?: number | null
 }
 
 export interface CreatePurchaseInput {
@@ -151,8 +153,12 @@ class SuppliersService {
         const grnId = Number(grnRes.lastInsertRowid)
         db.update(s.goodsReceived).set({ grnNo: `GRN-${String(grnId).padStart(6, '0')}` }).where(eq(s.goodsReceived.id, grnId)).run()
         for (const l of input.lines) {
-          db.insert(s.goodsReceivedLines).values({ grnId, productId: l.productId, quantity: l.quantity, unitCost: l.unitCost }).run()
+          db.insert(s.goodsReceivedLines).values({ grnId, productId: l.productId, quantity: l.quantity, unitCost: l.unitCost, expiryDate: l.expiryDate ?? null }).run()
           this.receiveStock(l.productId, l.quantity, l.unitCost, user.id, grnId)
+          // Track a batch when a batch number or expiry date is provided (pharmacy/food).
+          if (l.batchNo || l.expiryDate) {
+            inventoryService.addBatch({ productId: l.productId, batchNo: l.batchNo, expiryDate: l.expiryDate ?? null, quantity: l.quantity, costPrice: l.unitCost })
+          }
         }
       }
 

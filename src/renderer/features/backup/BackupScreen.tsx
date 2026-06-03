@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '../../lib/format'
 import { Icon } from '../../components/Icon'
+import { toast } from '../../stores/toastStore'
+import { confirmDialog } from '../../stores/confirmStore'
 
 export function BackupScreen() {
   const { t } = useTranslation()
@@ -26,10 +28,14 @@ export function BackupScreen() {
   }
 
   const restore = async (path: string) => {
-    if (!confirm('سيتم استبدال قاعدة البيانات الحالية بهذه النسخة. متابعة؟')) return
-    await window.api.backup.restore(path)
-    alert('تم الاسترجاع. سيتم إعادة تشغيل الواجهة.')
-    location.reload()
+    if (!(await confirmDialog({ message: 'سيتم استبدال قاعدة البيانات الحالية بهذه النسخة. متابعة؟', danger: true, confirmLabel: 'استرجاع' }))) return
+    try {
+      await window.api.backup.restore(path)
+      toast.ok('تم الاسترجاع — سيتم إعادة تشغيل الواجهة')
+      setTimeout(() => location.reload(), 900)
+    } catch (e) {
+      toast.err((e as Error).message)
+    }
   }
 
   return (

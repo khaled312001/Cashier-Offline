@@ -3,7 +3,17 @@ import { useTranslation } from 'react-i18next'
 import { Modal } from '../../components/Modal'
 import { Icon } from '../../components/Icon'
 import { useAuth } from '../../stores/authStore'
+import { formatDate } from '../../lib/format'
 import type { Product, StockMovement } from '@shared/types'
+
+interface ExpiringBatch {
+  id: number
+  productId: number
+  productName: string
+  batchNo: string | null
+  expiryDate: number | null
+  quantity: number
+}
 
 const MOVE_LABEL: Record<string, string> = {
   sale: 'بيع',
@@ -28,6 +38,8 @@ export function InventoryScreen() {
   const [qty, setQty] = useState('')
   const [reason, setReason] = useState('')
   const [movements, setMovements] = useState<StockMovement[]>([])
+  const [expiring, setExpiring] = useState<ExpiringBatch[]>([])
+  const [showExpiring, setShowExpiring] = useState(false)
 
   const reload = async () => {
     if (lowOnly) setProducts(await window.api.inventory.lowStock())
@@ -38,6 +50,11 @@ export function InventoryScreen() {
     reload()
     reloadMoves()
   }, [lowOnly, query]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    window.api.batches.expiring(30).then((b) => setExpiring(b as ExpiringBatch[]))
+  }, [])
+
+  const daysLeft = (ts: number | null) => (ts == null ? null : Math.ceil((ts - Date.now()) / 86400000))
 
   const doAdjust = async () => {
     if (!adjust) return
@@ -67,6 +84,19 @@ export function InventoryScreen() {
           <Icon name="search" className="pointer-events-none absolute top-1/2 -translate-y-1/2 start-3.5 h-5 w-5 text-ink-400" />
           <input className="input ps-11" placeholder={t('common.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
+
+        {expiring.length > 0 && (
+          <button
+            className="mb-4 flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-start transition hover:bg-amber-100"
+            onClick={() => setShowExpiring(true)}
+          >
+            <Icon name="alert" className="h-5 w-5 shrink-0 text-amber-600" />
+            <span className="flex-1 text-sm font-semibold text-amber-800">
+              {expiring.length} تشغيلة قاربت على انتهاء الصلاحية (خلال 30 يومًا) — اضغط للعرض
+            </span>
+            <Icon name="arrowLeft" className="h-4 w-4 text-amber-600" />
+          </button>
+        )}
 
         <div className="card flex-1 overflow-auto">
           <table className="w-full text-start text-sm">
@@ -130,6 +160,28 @@ export function InventoryScreen() {
           <input className="input text-center text-2xl" type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="±0" autoFocus />
           <input className="input" placeholder="السبب" value={reason} onChange={(e) => setReason(e.target.value)} />
           <button className="btn-primary w-full" onClick={doAdjust}>{t('common.save')}</button>
+        </div>
+      </Modal>
+
+      <Modal open={showExpiring} onClose={() => setShowExpiring(false)} title="تشغيلات قاربت على الانتهاء" width="max-w-xl">
+        <div className="max-h-[60vh] space-y-2 overflow-auto">
+          {expiring.map((b) => {
+            const d = daysLeft(b.expiryDate)
+            const expired = d != null && d < 0
+            return (
+              <div key={b.id} className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${expired ? 'border-rose-300 bg-rose-50' : 'border-amber-200 bg-amber-50/50'}`}>
+                <div>
+                  <span className="font-semibold text-ink-800">{b.productName}</span>
+                  {b.batchNo && <span className="ms-2 text-xs text-ink-400">تشغيلة {b.batchNo}</span>}
+                  <div className="text-xs text-ink-500">الكمية: {b.quantity} · ينتهي {b.expiryDate ? formatDate(b.expiryDate) : '—'}</div>
+                </div>
+                <span className={`chip ${expired ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {d == null ? '—' : expired ? `منتهٍ منذ ${Math.abs(d)} يوم` : `${d} يوم`}
+                </span>
+              </div>
+            )
+          })}
+          {expiring.length === 0 && <p className="py-6 text-center text-ink-400">لا توجد تشغيلات قاربت على الانتهاء</p>}
         </div>
       </Modal>
     </div>

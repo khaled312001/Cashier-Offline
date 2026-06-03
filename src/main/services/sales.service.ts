@@ -6,6 +6,8 @@ import { shiftService } from './shift.service'
 import { inventoryService } from './inventory.service'
 import { licenseService } from './license.service'
 import { settingsService } from './settings.service'
+import { customersService } from './customers.service'
+import { comboService } from './combo.service'
 import { inTransaction } from '../db/tx'
 import { genId } from '@shared/id'
 import { taxFromBasisPoints, roundTo } from '@shared/money'
@@ -48,6 +50,11 @@ class SalesService {
       let orderDiscount = input.discountTotal ?? 0
       if (input.discountType === 'percent' && orderDiscount > 0) {
         orderDiscount = Math.round((subtotal * orderDiscount) / 10000)
+      }
+      // Customer-group discount (e.g. wholesale tier) — added on top of any manual discount.
+      if (input.customerId) {
+        const groupBp = customersService.groupDiscountBp(input.customerId)
+        if (groupBp > 0) orderDiscount += Math.round((subtotal * groupBp) / 10000)
       }
       const serviceCharge = input.serviceCharge ?? 0
       const beforeRound = itemsGrand - orderDiscount + serviceCharge
@@ -133,16 +140,35 @@ class SalesService {
         }
         if (!hold) {
           const prod = db.select().from(s.products).where(eq(s.products.id, l.productId)).get()
-          if (prod?.trackStock) {
+          if (prod?.isCombo) {
+            // Combo: decrement each component's stock instead of the combo itself.
+            for (const comp of comboService.componentDeductions(l.productId, l.quantity)) {
+              const cprod = db.select().from(s.products).where(eq(s.products.id, comp.productId)).get()
+              if (cprod?.trackStock) {
+                inventoryService.applyMovement({
+                  productId: comp.productId,
+                  quantity: -comp.quantity,
+                  type: 'sale',
+                  unitCost: cprod.costPrice,
+                  refTable: 'sales',
+                  refId: saleId,
+                  userId: user.id,
+                  branchId: user.branchId
+                })
+              }
+            }
+          } else if (prod?.trackStock) {
             inventoryService.applyMovement({
               productId: l.productId,
+              variantId: l.variantId ?? undefined,
               quantity: -l.quantity,
               type: 'sale',
               unitCost: l.costPrice ?? prod.costPrice,
               refTable: 'sales',
               refId: saleId,
               userId: user.id,
-              branchId: user.branchId
+              branchId: user.branchId,
+              batchFefo: true // consume nearest-expiry batch first
             })
           }
         }

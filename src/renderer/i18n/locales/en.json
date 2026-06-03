@@ -3,6 +3,7 @@
   "nav": {
     "pos": "Point of Sale",
     "tables": "Tables",
+    "kitchen": "Kitchen",
     "sales": "Sales",
     "products": "Products",
     "inventory": "Inventory",

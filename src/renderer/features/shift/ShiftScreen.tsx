@@ -14,6 +14,7 @@ export function ShiftScreen() {
   const [z, setZ] = useState<ZReport | null>(null)
   const [showClose, setShowClose] = useState(false)
   const [expense, setExpense] = useState({ category: 'مصروف', amount: '', description: '' })
+  const [cashMove, setCashMove] = useState<{ type: 'pay_in' | 'pay_out'; amount: string; reason: string } | null>(null)
 
   if (!shift) return <OpenShift />
 
@@ -30,10 +31,10 @@ export function ShiftScreen() {
     setExpense({ category: 'مصروف', amount: '', description: '' })
   }
 
-  const cashMovement = async (type: 'pay_in' | 'pay_out') => {
-    const v = prompt(type === 'pay_in' ? 'مبلغ الإيداع' : 'مبلغ السحب')
-    if (!v) return
-    await window.api.shift.cashMovement({ type, amount: toPiasters(Number(v)), reason: '' })
+  const submitCashMove = async () => {
+    if (!cashMove || !(Number(cashMove.amount) > 0)) return
+    await window.api.shift.cashMovement({ type: cashMove.type, amount: toPiasters(Number(cashMove.amount)), reason: cashMove.reason })
+    setCashMove(null)
     refresh()
   }
 
@@ -61,8 +62,8 @@ export function ShiftScreen() {
             <Icon name="drawer" className="h-5 w-5 text-brand-600" /> الدرج
           </h2>
           <div className="flex gap-2">
-            <button className="btn-ghost flex-1" onClick={() => cashMovement('pay_in')}>إيداع</button>
-            <button className="btn-ghost flex-1" onClick={() => cashMovement('pay_out')}>سحب</button>
+            <button className="btn-ghost flex-1" onClick={() => setCashMove({ type: 'pay_in', amount: '', reason: '' })}>إيداع</button>
+            <button className="btn-ghost flex-1" onClick={() => setCashMove({ type: 'pay_out', amount: '', reason: '' })}>سحب</button>
             <button className="btn-ghost flex-1" onClick={() => window.api.hardware.openDrawer()}>
               <Icon name="drawer" className="h-4 w-4" /> فتح
             </button>
@@ -94,6 +95,21 @@ export function ShiftScreen() {
           <input className="input text-center text-2xl" type="number" value={counted} onChange={(e) => setCounted(e.target.value)} autoFocus />
           <button className="btn-danger w-full" onClick={doClose}>{t('shift.close')}</button>
         </div>
+      </Modal>
+
+      <Modal open={!!cashMove} onClose={() => setCashMove(null)} title={cashMove?.type === 'pay_in' ? 'إيداع نقدية بالدرج' : 'سحب نقدية من الدرج'}>
+        {cashMove && (
+          <div className="space-y-3">
+            <div>
+              <label className="label">المبلغ (ج.م)</label>
+              <input className="input text-center text-2xl" type="number" value={cashMove.amount} onChange={(e) => setCashMove({ ...cashMove, amount: e.target.value })} autoFocus onKeyDown={(e) => e.key === 'Enter' && submitCashMove()} />
+            </div>
+            <input className="input" placeholder="السبب (اختياري)" value={cashMove.reason} onChange={(e) => setCashMove({ ...cashMove, reason: e.target.value })} />
+            <button className="btn-primary w-full" onClick={submitCashMove} disabled={!(Number(cashMove.amount) > 0)}>
+              <Icon name="check" className="h-5 w-5" /> تأكيد
+            </button>
+          </div>
+        )}
       </Modal>
 
       <Modal open={!!z} onClose={() => setZ(null)} title="تقرير Z (إغلاق الوردية)">

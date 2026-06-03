@@ -1,9 +1,11 @@
 import { app, ipcMain } from 'electron'
+import { ZodError, type ZodSchema } from 'zod'
 import { CH } from '@shared/ipc-contract'
 import type { IpcResult } from '@shared/types'
 import { AppError } from './errors'
 import { log } from '../logger'
 import { getPaths } from '../paths'
+import * as V from '@shared/validators'
 
 import { authService } from '../services/auth.service'
 import { productsService } from '../services/products.service'
@@ -21,15 +23,31 @@ import { suppliersService } from '../services/suppliers.service'
 import { usersService } from '../services/users.service'
 import { expensesService } from '../services/expenses.service'
 import { stocktakeService } from '../services/stocktake.service'
+import { modifiersService } from '../services/modifiers.service'
+import { comboService } from '../services/combo.service'
+import { kotService } from '../services/kot.service'
 
 type Handler = (...args: any[]) => unknown | Promise<unknown>
 
-function handle(channel: string, fn: Handler) {
+/**
+ * Register an IPC handler. Optionally pass a Zod schema that validates the FIRST
+ * argument (the typical {input} payload) before the handler runs, so malformed
+ * money/quantities/enums from the renderer are rejected at the boundary.
+ */
+function handle(channel: string, fn: Handler): void
+function handle(channel: string, schema: ZodSchema, fn: Handler): void
+function handle(channel: string, a: Handler | ZodSchema, b?: Handler): void {
+  const schema = b ? (a as ZodSchema) : undefined
+  const fn = (b ?? a) as Handler
   ipcMain.handle(channel, async (_evt, ...args): Promise<IpcResult<unknown>> => {
     try {
+      if (schema) schema.parse(args[0])
       const data = await fn(...args)
       return { ok: true, data }
     } catch (err) {
+      if (err instanceof ZodError) {
+        return { ok: false, error: { code: 'VALIDATION', message: 'بيانات غير صالحة: ' + err.issues.map((i) => i.message).join('، ') } }
+      }
       const code = err instanceof AppError ? err.code : 'INTERNAL'
       const message = err instanceof Error ? err.message : 'خطأ غير متوقع'
       if (code === 'INTERNAL') log.error(`IPC ${channel} failed:`, message, err instanceof Error ? err.stack : '')
@@ -50,7 +68,7 @@ export function registerIpc() {
   handle(CH.productsSearch, (q: string, limit?: number) => productsService.search(q, limit))
   handle(CH.productsByBarcode, (code: string) => productsService.byBarcode(code))
   handle(CH.productsGet, (id: number) => productsService.get(id))
-  handle(CH.productsUpsert, (input: any) => productsService.upsert(input))
+  handle(CH.productsUpsert, V.productInputSchema, (input: any) => productsService.upsert(input))
   handle(CH.productsDelete, (id: number) => productsService.delete(id))
   handle(CH.productsList, (opts?: any) => productsService.list(opts))
   handle(CH.productsGenBarcode, () => productsService.genBarcode())
@@ -68,11 +86,11 @@ export function registerIpc() {
   handle(CH.unitsList, () => productsService.listUnits())
 
   // ---- sales ----
-  handle(CH.salesCreate, (input: any) => salesService.create(input))
+  handle(CH.salesCreate, V.createSaleSchema, (input: any) => salesService.create(input))
   handle(CH.salesListHeld, () => salesService.listHeld())
   handle(CH.salesResume, (id: number) => salesService.resume(id))
   handle(CH.salesVoid, (id: number, reason: string) => salesService.void(id, reason))
-  handle(CH.salesRefund, (input: any) => salesService.refund(input))
+  handle(CH.salesRefund, V.refundSchema, (input: any) => salesService.refund(input))
   handle(CH.salesGet, (id: number) => salesService.get(id))
   handle(CH.salesList, (opts?: any) => salesService.list(opts))
 
@@ -87,14 +105,14 @@ export function registerIpc() {
 
   // ---- inventory ----
   handle(CH.inventoryGetStock, (id: number) => inventoryService.getStock(id))
-  handle(CH.inventoryAdjust, (input: any) => inventoryService.adjust(input))
+  handle(CH.inventoryAdjust, V.inventoryAdjustSchema, (input: any) => inventoryService.adjust(input))
   handle(CH.inventoryMovements, (opts?: any) => inventoryService.movements(opts))
   handle(CH.inventoryLowStock, () => inventoryService.lowStock())
 
   // ---- customers ----
   handle(CH.customersSearch, (q: string) => customersService.search(q))
   handle(CH.customersGet, (id: number) => customersService.get(id))
-  handle(CH.customersUpsert, (input: any) => customersService.upsert(input))
+  handle(CH.customersUpsert, V.customerUpsertSchema, (input: any) => customersService.upsert(input))
   handle(CH.customersList, () => customersService.list())
 
   // ---- reports ----
@@ -104,11 +122,11 @@ export function registerIpc() {
   handle(CH.reportsTopProducts, (opts: any) => reportsService.topProducts(opts))
 
   // ---- shift ----
-  handle(CH.shiftOpen, (openingFloat: number) => shiftService.open(openingFloat))
-  handle(CH.shiftClose, (countedCash: number) => shiftService.close(countedCash))
+  handle(CH.shiftOpen, V.shiftOpenSchema, (openingFloat: number) => shiftService.open(openingFloat))
+  handle(CH.shiftClose, V.shiftCloseSchema, (countedCash: number) => shiftService.close(countedCash))
   handle(CH.shiftCurrent, () => shiftService.currentOpen())
-  handle(CH.shiftCashMovement, (input: any) => shiftService.cashMovement(input))
-  handle(CH.shiftAddExpense, (input: any) => shiftService.addExpense(input))
+  handle(CH.shiftCashMovement, V.cashMovementSchema, (input: any) => shiftService.cashMovement(input))
+  handle(CH.shiftAddExpense, V.expenseAddSchema, (input: any) => shiftService.addExpense(input))
 
   // ---- settings ----
   handle(CH.settingsGetAll, () => settingsService.getAll())
@@ -136,14 +154,14 @@ export function registerIpc() {
   handle(CH.suppliersSearch, (q: string) => suppliersService.search(q))
   handle(CH.suppliersGet, (id: number) => suppliersService.get(id))
   handle(CH.suppliersUpsert, (input: any) => suppliersService.upsert(input))
-  handle(CH.suppliersPay, (input: any) => suppliersService.pay(input))
+  handle(CH.suppliersPay, V.supplierPaySchema, (input: any) => suppliersService.pay(input))
   handle(CH.suppliersLedger, (id: number) => suppliersService.ledger(id))
-  handle(CH.purchasesCreate, (input: any) => suppliersService.createPurchase(input))
+  handle(CH.purchasesCreate, V.purchaseCreateSchema, (input: any) => suppliersService.createPurchase(input))
   handle(CH.purchasesList, (limit?: number) => suppliersService.listPurchases(limit))
 
   // ---- users & permissions ----
   handle(CH.usersList, () => usersService.list())
-  handle(CH.usersUpsert, (input: any) => usersService.upsertUser(input))
+  handle(CH.usersUpsert, V.userUpsertSchema, (input: any) => usersService.upsertUser(input))
   handle(CH.usersDelete, (id: number) => usersService.deleteUser(id))
   handle(CH.rolesList, () => usersService.listRoles())
   handle(CH.rolesCreate, (name: string) => usersService.createRole(name))
@@ -165,7 +183,41 @@ export function registerIpc() {
 
   // ---- customers extended ----
   handle(CH.customersLedger, (id: number) => customersService.ledger(id))
-  handle(CH.customersPay, (input: any) => customersService.pay(input))
+  handle(CH.customersPay, V.customerPaySchema, (input: any) => customersService.pay(input))
+
+  // ---- customer groups ----
+  handle(CH.custGroupsList, () => customersService.listGroups())
+  handle(CH.custGroupsUpsert, (input: any) => customersService.upsertGroup(input))
+  handle(CH.custGroupsDelete, (id: number) => customersService.deleteGroup(id))
+
+  // ---- modifiers ----
+  handle(CH.modListGroups, () => modifiersService.listGroups())
+  handle(CH.modUpsertGroup, (input: any) => modifiersService.upsertGroup(input))
+  handle(CH.modDeleteGroup, (id: number) => modifiersService.deleteGroup(id))
+  handle(CH.modUpsertModifier, (input: any) => modifiersService.upsertModifier(input))
+  handle(CH.modDeleteModifier, (id: number) => modifiersService.deleteModifier(id))
+  handle(CH.modGroupsForProduct, (productId: number) => modifiersService.groupsForProduct(productId))
+  handle(CH.modSetProductGroups, (productId: number, groupIds: any) => modifiersService.setProductGroups(productId, groupIds))
+
+  // ---- combos ----
+  handle(CH.comboComponents, (productId: number) => comboService.componentsForProduct(productId))
+  handle(CH.comboSetComponents, (productId: number, components: any) => comboService.setComponents(productId, components))
+
+  // ---- KOT / kitchen ----
+  handle(CH.kotSections, () => kotService.listSections())
+  handle(CH.kotUpsertSection, (input: any) => kotService.upsertSection(input))
+  handle(CH.kotDeleteSection, (id: number) => kotService.deleteSection(id))
+  handle(CH.kotPrintForSale, (saleId: number) => kotService.printForSale(saleId))
+  handle(CH.kotListOpen, (sectionId?: number) => kotService.listOpenTickets(sectionId))
+  handle(CH.kotSetTicketStatus, (kotId: number, status: string) => kotService.setTicketStatus(kotId, status))
+
+  // ---- variants ----
+  handle(CH.variantsList, (productId: number) => productsService.listVariants(productId))
+  handle(CH.variantsUpsert, (input: any) => productsService.upsertVariant(input))
+  handle(CH.variantsDelete, (id: number) => productsService.deleteVariant(id))
+
+  // ---- batches / expiry ----
+  handle(CH.batchesExpiring, (days?: number) => inventoryService.expiringBatches(days))
 
   // ---- reports extended ----
   handle(CH.reportsProfit, (opts: any) => reportsService.profit(opts))

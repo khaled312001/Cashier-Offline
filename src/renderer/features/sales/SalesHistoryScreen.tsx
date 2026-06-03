@@ -4,6 +4,7 @@ import { Icon } from '../../components/Icon'
 import { ReceiptArt } from '../../components/Illustration'
 import { useAuth } from '../../stores/authStore'
 import { formatMoney, formatDate } from '../../lib/format'
+import { toast } from '../../stores/toastStore'
 import type { SaleDetail, SaleSummary } from '@shared/types'
 
 const STATUS_LABEL: Record<string, string> = { completed: 'مكتملة', refunded: 'مرتجعة', partial_refund: 'مرتجع جزئي', voided: 'ملغاة' }
@@ -15,6 +16,8 @@ export function SalesHistoryScreen() {
   const [detail, setDetail] = useState<SaleDetail | null>(null)
   const [refunding, setRefunding] = useState<SaleDetail | null>(null)
   const [refundQty, setRefundQty] = useState<Record<number, number>>({})
+  const [voidId, setVoidId] = useState<number | null>(null)
+  const [voidReason, setVoidReason] = useState('')
 
   const reload = async () => setList(await window.api.sales.list({ limit: 100 }))
   useEffect(() => {
@@ -24,19 +27,25 @@ export function SalesHistoryScreen() {
   const open = async (id: number) => setDetail(await window.api.sales.get(id))
 
   const reprint = async (id: number) => {
-    await window.api.hardware.printReceipt(id)
-    alert('تم إرسال الإيصال للطباعة')
+    try {
+      await window.api.hardware.printReceipt(id)
+      toast.ok('تم إرسال الإيصال للطباعة')
+    } catch (e) {
+      toast.err((e as Error).message)
+    }
   }
 
-  const voidSale = async (id: number) => {
-    const reason = prompt('سبب الإلغاء؟')
-    if (reason == null) return
+  const confirmVoid = async () => {
+    if (voidId == null) return
     try {
-      await window.api.sales.void(id, reason)
+      await window.api.sales.void(voidId, voidReason || 'إلغاء')
+      setVoidId(null)
+      setVoidReason('')
       setDetail(null)
       reload()
+      toast.ok('تم إلغاء الفاتورة')
     } catch (e) {
-      alert((e as Error).message)
+      toast.err((e as Error).message)
     }
   }
 
@@ -58,8 +67,9 @@ export function SalesHistoryScreen() {
       setRefunding(null)
       setDetail(null)
       reload()
+      toast.ok('تم تسجيل المرتجع')
     } catch (e) {
-      alert((e as Error).message)
+      toast.err((e as Error).message)
     }
   }
 
@@ -122,7 +132,7 @@ export function SalesHistoryScreen() {
                 <button className="btn-soft flex-1" onClick={() => startRefund(detail)}><Icon name="refund" className="h-4 w-4" /> مرتجع</button>
               )}
               {can('sales.void') && detail.status === 'completed' && (
-                <button className="btn-danger flex-1" onClick={() => voidSale(detail.id)}><Icon name="close" className="h-4 w-4" /> إلغاء</button>
+                <button className="btn-danger flex-1" onClick={() => { setVoidId(detail.id); setVoidReason('') }}><Icon name="close" className="h-4 w-4" /> إلغاء</button>
               )}
             </div>
           </div>
@@ -146,6 +156,17 @@ export function SalesHistoryScreen() {
             <button className="btn-danger w-full" onClick={submitRefund}><Icon name="refund" className="h-5 w-5" /> تأكيد المرتجع وإرجاع للمخزون</button>
           </div>
         )}
+      </Modal>
+
+      <Modal open={voidId != null} onClose={() => setVoidId(null)} title="إلغاء الفاتورة">
+        <div className="space-y-3">
+          <p className="text-sm text-ink-500">اذكر سبب الإلغاء (يُسجَّل في سجل المراجعة).</p>
+          <input className="input" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="سبب الإلغاء" autoFocus onKeyDown={(e) => e.key === 'Enter' && confirmVoid()} />
+          <div className="flex justify-end gap-2">
+            <button className="btn-ghost" onClick={() => setVoidId(null)}>تراجع</button>
+            <button className="btn-danger" onClick={confirmVoid}><Icon name="close" className="h-4 w-4" /> تأكيد الإلغاء</button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

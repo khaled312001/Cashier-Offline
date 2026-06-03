@@ -1,9 +1,12 @@
-import { readdirSync, statSync, copyFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, statSync, copyFileSync, existsSync, unlinkSync } from 'node:fs'
+import { join, normalize } from 'node:path'
+import Database from 'better-sqlite3'
 import { getPaths } from '../paths'
 import { rawClient, openDatabase, closeDatabase } from '../db/connection'
 import { runMigrations } from '../db/migrator'
 import { authService } from '../services/auth.service'
+import { settingsService } from '../services/settings.service'
+import { AppError } from '../ipc/errors'
 import { log } from '../logger'
 
 function stamp(): string {
@@ -40,15 +43,41 @@ class BackupService {
 
   private prune() {
     const { autoBackupDir } = getPaths()
-    // Keep newest N (read retention from settings lazily to avoid a cycle).
-    const retention = 14
+    // Keep newest N auto-backups (configurable in settings; default 14).
+    let retention = 14
+    try {
+      retention = Math.max(1, settingsService.getAll().backup.retentionCount)
+    } catch {
+      /* settings unavailable → use default */
+    }
     const files = readdirSync(autoBackupDir)
       .filter((f) => f.endsWith('.db'))
       .map((f) => ({ f, t: statSync(join(autoBackupDir, f)).mtimeMs }))
       .sort((a, b) => b.t - a.t)
     for (const old of files.slice(retention)) {
       try {
-        require('node:fs').unlinkSync(join(autoBackupDir, old.f))
+        unlinkSync(join(autoBackupDir, old.f))
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /** Verify a candidate DB file is a valid, uncorrupted SQLite database. */
+  private verifyIntegrity(path: string) {
+    let db: Database.Database | null = null
+    try {
+      db = new Database(path, { readonly: true, fileMustExist: true })
+      const res = db.pragma('integrity_check') as Array<{ integrity_check: string }>
+      if (res[0]?.integrity_check !== 'ok') {
+        throw new AppError('CORRUPT', 'ملف النسخة الاحتياطية تالف ولا يمكن استرجاعه')
+      }
+    } catch (e) {
+      if (e instanceof AppError) throw e
+      throw new AppError('CORRUPT', 'ملف النسخة الاحتياطية غير صالح')
+    } finally {
+      try {
+        db?.close()
       } catch {
         /* ignore */
       }
@@ -57,16 +86,27 @@ class BackupService {
 
   restore(path: string): void {
     authService.assertPermission('backup.manage')
-    if (!existsSync(path)) throw new Error('ملف النسخة غير موجود')
-    const { dbPath, manualBackupDir } = getPaths()
-    // Safety: snapshot current DB before overwriting.
+    const { dbPath, manualBackupDir, autoBackupDir } = getPaths()
+
+    // 1) Path whitelist: only restore from our own backup directories.
+    const norm = normalize(path)
+    const allowed = [normalize(autoBackupDir), normalize(manualBackupDir)]
+    if (!allowed.some((d) => norm.startsWith(d))) {
+      throw new AppError('INVALID_PATH', 'يُسمح بالاسترجاع من مجلد النسخ الاحتياطية فقط')
+    }
+    if (!existsSync(norm)) throw new AppError('NOT_FOUND', 'ملف النسخة غير موجود')
+
+    // 2) Integrity check BEFORE touching the live DB.
+    this.verifyIntegrity(norm)
+
+    // 3) Snapshot current DB, then swap.
     const safety = join(manualBackupDir, `before-restore-${stamp()}.db`)
     closeDatabase()
     copyFileSync(dbPath, safety)
-    copyFileSync(path, dbPath)
+    copyFileSync(norm, dbPath)
     openDatabase(dbPath)
     runMigrations()
-    log.info('restored from', path, '(previous saved to', safety, ')')
+    log.info('restored from', norm, '(previous saved to', safety, ')')
   }
 }
 

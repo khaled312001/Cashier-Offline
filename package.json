@@ -6,7 +6,6 @@
   "author": "Your Software Company",
   "license": "UNLICENSED",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
@@ -17,7 +16,8 @@
     "db:generate": "drizzle-kit generate",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-builder install-app-deps",
-    "dist": "electron-vite build && electron-builder --win --x64",
+    "verify:keys": "node scripts/verify-keys.mjs",
+    "dist": "npm run verify:keys && electron-vite build && electron-builder --win --x64",
     "license:keygen": "tsx tools/license-cli/keygen.ts",
     "license:gen": "tsx tools/license-cli/generate-license.ts"
   },

@@ -22,6 +22,9 @@ import { ReportsScreen } from './features/reports/ReportsScreen'
 import { ShiftScreen } from './features/shift/ShiftScreen'
 import { SettingsScreen } from './features/settings/SettingsScreen'
 import { BackupScreen } from './features/backup/BackupScreen'
+import { KitchenScreen } from './features/kitchen/KitchenScreen'
+import { Toaster } from './components/Toaster'
+import { ConfirmHost } from './components/ConfirmHost'
 
 export default function App() {
   const auth = useAuth()
@@ -50,12 +53,24 @@ export default function App() {
 
   // License gate
   if (!license.canSell() && !licenseAck) {
-    return <Activation onActivated={() => setLicenseAck(true)} />
+    return (
+      <>
+        <Activation onActivated={() => setLicenseAck(true)} />
+        <Toaster />
+        <ConfirmHost />
+      </>
+    )
   }
 
   // Auth gate
   if (!auth.user) {
-    return <Login />
+    return (
+      <>
+        <Login />
+        <Toaster />
+        <ConfirmHost />
+      </>
+    )
   }
 
   return (
@@ -65,6 +80,7 @@ export default function App() {
           <Route index element={<Navigate to="/pos" replace />} />
           <Route path="/pos" element={<PosScreen />} />
           <Route path="/tables" element={<FloorPlan />} />
+          <Route path="/kitchen" element={<KitchenScreen />} />
           <Route path="/sales" element={<SalesHistoryScreen />} />
           <Route path="/products" element={<ProductsScreen />} />
           <Route path="/inventory" element={<InventoryScreen />} />
@@ -81,6 +97,8 @@ export default function App() {
           <Route path="*" element={<Navigate to="/pos" replace />} />
         </Route>
       </Routes>
+      <Toaster />
+      <ConfirmHost />
     </HashRouter>
   )
 }

@@ -12,6 +12,13 @@ export interface CartTotals {
   itemCount: number
 }
 
+export interface SelectedModifier {
+  modifierId: number
+  name: string
+  price: number
+  quantity: number
+}
+
 interface CartState {
   lines: CartLine[]
   orderType: OrderType
@@ -21,6 +28,7 @@ interface CartState {
   orderDiscountType: 'amount' | 'percent'
   serviceCharge: number
   addProduct: (product: Product, qty?: number) => void
+  addProductWithExtras: (product: Product, qty: number, opts: { variant?: { id: number; name: string; price: number }; modifiers?: SelectedModifier[] }) => void
   setQty: (lineId: string, qty: number) => void
   setPrice: (lineId: string, price: number) => void
   setLineDiscount: (lineId: string, discount: number) => void
@@ -61,9 +69,9 @@ export const useCart = create<CartState>((set, get) => ({
 
   addProduct: (product, qty = 1) =>
     set((state) => {
-      // For non-weighed items, merge with an existing identical line.
+      // For non-weighed items without modifiers, merge with an existing identical line.
       if (!product.isWeighed) {
-        const existing = state.lines.find((l) => l.productId === product.id && l.discount === 0)
+        const existing = state.lines.find((l) => l.productId === product.id && l.discount === 0 && !l.modifiers?.length && !l.variantId)
         if (existing) {
           return {
             lines: state.lines.map((l) =>
@@ -73,6 +81,20 @@ export const useCart = create<CartState>((set, get) => ({
         }
       }
       return { lines: [...state.lines, makeLine(product, qty)] }
+    }),
+
+  addProductWithExtras: (product, qty, opts) =>
+    set((state) => {
+      const base = makeLine(product, qty)
+      if (opts.variant) {
+        base.variantId = opts.variant.id
+        base.name = `${product.name} - ${opts.variant.name}`
+        base.unitPrice = opts.variant.price || product.sellPrice
+      }
+      // Modifiers are kept separate; their price is added per-unit by the totals
+      // calc and by the backend's modTotal (NOT baked into unitPrice).
+      if (opts.modifiers?.length) base.modifiers = opts.modifiers
+      return { lines: [...state.lines, base] }
     }),
 
   setQty: (lineId, qty) =>
@@ -121,7 +143,8 @@ export const useCart = create<CartState>((set, get) => ({
     let itemsGrand = 0
     let itemCount = 0
     for (const l of state.lines) {
-      const gross = Math.round(l.unitPrice * l.quantity)
+      const modTotal = (l.modifiers ?? []).reduce((a, m) => a + m.price * m.quantity, 0)
+      const gross = Math.round(l.unitPrice * l.quantity) + modTotal
       const net = gross - l.discount
       const tax = taxFromBasisPoints(net, l.taxRateBp, l.taxInclusive)
       subtotal += net

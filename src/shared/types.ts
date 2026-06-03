@@ -265,9 +265,26 @@ export interface ReceiptSettings {
   footer: string
   showQr: boolean
   showLogo: boolean
-  paper: '58' | '80'
+  paper: '58' | '80' | 'A4'
   copies: number
   renderMode: 'text' | 'image'
+  // Real printing config
+  printMethod: 'html' | 'escpos' | 'sink' // html = Electron silent print (any printer, Arabic)
+  printerName: string // Windows device name; '' = system default
+  escposInterface: string // e.g. 'printer:POS-80' or 'tcp://192.168.1.50:9100'
+  autoPrint: boolean // auto-print after each completed sale
+  openDrawerOnCash: boolean
+  fontScale: number // 1 = normal
+}
+
+export interface LabelSettings {
+  printerName: string
+  widthMm: number
+  heightMm: number
+  barcodeType: 'code128' | 'ean13'
+  showName: boolean
+  showPrice: boolean
+  columns: number
 }
 
 export interface AppSettings {
@@ -276,6 +293,7 @@ export interface AppSettings {
   tax: { defaultRateBp: number; inclusive: boolean; label: string }
   currency: { code: string; symbol: string; decimals: number }
   receipt: ReceiptSettings
+  label: LabelSettings
   pos: {
     defaultOrderType: OrderType
     allowNegativeStock: boolean
