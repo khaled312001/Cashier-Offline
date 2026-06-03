@@ -4,6 +4,12 @@ export default {
   content: ['./src/renderer/index.html', './src/renderer/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      // Height-based breakpoints so full-screen layouts (login/activation) can
+      // shrink their elements on short windows instead of clipping.
+      screens: {
+        short: { raw: '(max-height: 760px)' },
+        shorter: { raw: '(max-height: 640px)' }
+      },
       fontFamily: {
         sans: ['Cairo', 'Tajawal', 'Segoe UI', 'system-ui', 'sans-serif']
       },

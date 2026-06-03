@@ -50,12 +50,13 @@ export function Activation({ onActivated }: { onActivated?: () => void }) {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-ink-100 p-6">
-      <div className="card w-full max-w-2xl p-8">
-        <div className="mb-6 flex items-center gap-5">
-          <ShieldKeyArt className="h-24 w-24 shrink-0" />
+    <div className="h-full overflow-y-auto bg-ink-100">
+      <div className="flex min-h-full items-center justify-center p-5 short:p-3">
+      <div className="card w-full max-w-2xl p-8 short:p-5">
+        <div className="mb-6 flex items-center gap-5 short:mb-4 short:gap-3">
+          <ShieldKeyArt className="h-24 w-24 shrink-0 short:h-16 short:w-16" />
           <div>
-            <h1 className="text-2xl font-extrabold text-ink-800">{t('license.title')}</h1>
+            <h1 className="text-2xl font-extrabold text-ink-800 short:text-xl">{t('license.title')}</h1>
             <p className="text-ink-500">{t('app.name')}</p>
             <p className="mt-1 text-sm text-brand-600">
               للحصول على ترخيص تواصل مع {VENDOR.name} — <span dir="ltr">{VENDOR.phoneDisplay}</span>
@@ -63,7 +64,7 @@ export function Activation({ onActivated }: { onActivated?: () => void }) {
           </div>
         </div>
 
-        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl bg-ink-50 p-4">
+        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl bg-ink-50 p-4 short:mb-3 short:p-3">
           <span className={`chip ${STATUS_CHIP[info?.status ?? 'none']}`}>{info ? t(`license.${info.status}`) : t('common.loading')}</span>
           {info?.customerName && <span className="text-ink-700">{info.customerName}</span>}
           {info?.daysRemaining != null && info.status !== 'active' && (
@@ -73,7 +74,7 @@ export function Activation({ onActivated }: { onActivated?: () => void }) {
           )}
         </div>
 
-        <div className="mb-5">
+        <div className="mb-5 short:mb-3">
           <label className="label">{t('license.machineId')}</label>
           <div className="flex gap-2">
             <input className="input font-mono text-xs" readOnly value={info?.machineId ?? ''} />
@@ -84,10 +85,10 @@ export function Activation({ onActivated }: { onActivated?: () => void }) {
           </div>
         </div>
 
-        <div className="mb-4">
+        <div className="mb-4 short:mb-3">
           <label className="label">{t('license.paste')}</label>
           <textarea
-            className="input h-24 font-mono text-xs"
+            className="input h-24 font-mono text-xs short:h-16"
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="eyJ..."
@@ -119,7 +120,8 @@ export function Activation({ onActivated }: { onActivated?: () => void }) {
           </button>
         )}
 
-        <VendorCredit className="mt-8 border-t border-ink-200 pt-6" />
+        <VendorCredit className="mt-8 border-t border-ink-200 pt-6 short:mt-4 short:pt-4" />
+      </div>
       </div>
     </div>
   )
