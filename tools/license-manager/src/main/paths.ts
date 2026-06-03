@@ -20,3 +20,10 @@ export function getPaths() {
     licensesDir
   }
 }
+
+/** Path to the bundled CANONICAL vendor private key (matches the app's embedded public key). */
+export function getBundledVendorKey(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'resources', 'keys', 'vendor_private.pem')
+    : join(app.getAppPath(), 'resources', 'keys', 'vendor_private.pem')
+}

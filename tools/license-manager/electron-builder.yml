@@ -10,6 +10,12 @@ files:
   - out/**/*
   - package.json
 
+# Bundle the canonical vendor signing key so every install signs with the key
+# the customer app trusts (internal tool — not shipped to customers).
+extraResources:
+  - from: resources
+    to: resources
+
 asarUnpack:
   - '**/node_modules/better-sqlite3/**'
   - '**/*.node'

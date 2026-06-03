@@ -1,4 +1,4 @@
-import { generateKeyPairSync, createPrivateKey, sign, randomBytes } from 'node:crypto'
+import { generateKeyPairSync, createPrivateKey, createPublicKey, sign, randomBytes } from 'node:crypto'
 import { writeFileSync, readFileSync, existsSync } from 'node:fs'
 import type { LicenseType } from '../shared/types'
 
@@ -35,6 +35,25 @@ export function generateKeyPair(privatePath: string, publicPath: string): boolea
   const { publicKey, privateKey } = generateKeyPairSync('ed25519')
   writeFileSync(privatePath, privateKey.export({ type: 'pkcs8', format: 'pem' }) as string)
   writeFileSync(publicPath, publicKey.export({ type: 'spki', format: 'pem' }) as string)
+  return true
+}
+
+/**
+ * Seed the signing key store from the bundled CANONICAL vendor key — the one
+ * whose public half is embedded in the shipped customer app. Runs on startup:
+ * if no key exists yet AND a bundled vendor key is present, install it (deriving
+ * the public key). This guarantees every License Manager install signs with the
+ * SAME key the app trusts, instead of auto-generating a divergent random key
+ * (which produces licenses the app rejects as "not valid for this device").
+ * Returns true if a key was seeded. Never overwrites an existing key.
+ */
+export function seedKeyFromVendor(privatePath: string, publicPath: string, bundledPrivatePath: string): boolean {
+  if (existsSync(privatePath)) return false
+  if (!existsSync(bundledPrivatePath)) return false
+  const priv = createPrivateKey(readFileSync(bundledPrivatePath, 'utf-8'))
+  if (priv.asymmetricKeyType !== 'ed25519') return false
+  writeFileSync(privatePath, priv.export({ type: 'pkcs8', format: 'pem' }) as string)
+  writeFileSync(publicPath, createPublicKey(priv).export({ type: 'spki', format: 'pem' }) as string)
   return true
 }
 

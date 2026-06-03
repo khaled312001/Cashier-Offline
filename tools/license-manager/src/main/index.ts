@@ -3,8 +3,9 @@ import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
-import { getPaths } from './paths'
+import { getPaths, getBundledVendorKey } from './paths'
 import { openDb, closeDb } from './db'
+import { seedKeyFromVendor } from './crypto'
 import { managerService } from './service'
 import { CH } from '../shared/ipc'
 import type { IpcResult } from '../shared/types'
@@ -98,6 +99,14 @@ function registerIpc() {
 async function bootstrap() {
   const paths = getPaths()
   openDb(paths.dbPath)
+  // Ensure this install signs with the canonical vendor key the customer app trusts.
+  try {
+    if (seedKeyFromVendor(paths.privateKey, paths.publicKey, getBundledVendorKey())) {
+      console.log('[license-manager] seeded signing key from bundled vendor key')
+    }
+  } catch (e) {
+    console.error('[license-manager] vendor key seed failed:', e)
+  }
   registerIpc()
   if (process.argv.includes('--smoke')) {
     const { runSmoke } = await import('./smoke')

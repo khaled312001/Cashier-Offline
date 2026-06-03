@@ -1,8 +1,0 @@
-node_modules/
-out/
-release/
-.dev-userdata/
-*.log
-# The private signing key lives in userData at runtime — never commit any keys
-keys/
-*.pem
